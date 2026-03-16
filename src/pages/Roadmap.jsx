@@ -30,7 +30,7 @@ function Roadmap() {
 
 	if (isLoading) {
 		return (
-			<section className="rounded-2xl bg-white p-8 shadow-sm ring-1 ring-indigo-100">
+			<section className="cc-surface p-8">
 				<Loader label="Loading roadmap..." />
 			</section>
 		);
@@ -42,14 +42,14 @@ function Roadmap() {
 
 	return (
 		<section className="space-y-4">
-			<div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-indigo-100 sm:p-8">
-				<h1 className="text-2xl font-bold text-slate-900">Career Roadmap: {roadmap.career}</h1>
+			<div className="cc-surface p-6 sm:p-8">
+				<h1 className="cc-heading text-2xl font-extrabold text-slate-900">Career Roadmap: {roadmap.career}</h1>
 				<p className="mt-2 text-sm text-slate-600">Step-by-step guidance to reach your career goal.</p>
 			</div>
 
 			<div className="grid gap-4 lg:grid-cols-2">
-				<div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-indigo-100">
-					<h2 className="text-lg font-semibold text-slate-900">Timeline</h2>
+				<div className="cc-surface p-6">
+					<h2 className="cc-heading text-lg font-bold text-slate-900">Timeline</h2>
 					<ol className="mt-3 space-y-2 text-sm text-slate-700">
 						{roadmap.steps?.map((step, index) => (
 							<li key={step} className="flex gap-3">
@@ -63,8 +63,8 @@ function Roadmap() {
 				</div>
 
 				<div className="space-y-4">
-					<div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-indigo-100">
-						<h2 className="text-lg font-semibold text-slate-900">Required Exams</h2>
+					<div className="cc-surface p-6">
+						<h2 className="cc-heading text-lg font-bold text-slate-900">Required Exams</h2>
 						<ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-700">
 							{roadmap.exams?.map((exam) => (
 								<li key={exam}>{exam}</li>
@@ -72,8 +72,8 @@ function Roadmap() {
 						</ul>
 					</div>
 
-					<div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-indigo-100">
-						<h2 className="text-lg font-semibold text-slate-900">Required Certifications</h2>
+					<div className="cc-surface p-6">
+						<h2 className="cc-heading text-lg font-bold text-slate-900">Required Certifications</h2>
 						<ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-700">
 							{roadmap.certifications?.map((certificate) => (
 								<li key={certificate}>{certificate}</li>
@@ -81,8 +81,8 @@ function Roadmap() {
 						</ul>
 					</div>
 
-					<div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-indigo-100">
-						<h2 className="text-lg font-semibold text-slate-900">Skill Roadmap</h2>
+					<div className="cc-surface p-6">
+						<h2 className="cc-heading text-lg font-bold text-slate-900">Skill Roadmap</h2>
 						<div className="mt-3 flex flex-wrap gap-2">
 							{roadmap.skillRoadmap?.map((skill) => (
 								<span key={skill} className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">

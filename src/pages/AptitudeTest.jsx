@@ -55,8 +55,8 @@ function AptitudeTest() {
 	};
 
 	return (
-		<section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-indigo-100 sm:p-8">
-			<h1 className="text-2xl font-bold text-slate-900">Aptitude Test</h1>
+		<section className="cc-surface p-6 sm:p-8">
+			<h1 className="cc-heading text-2xl font-extrabold text-slate-900">Aptitude Test</h1>
 			<p className="mt-2 text-sm text-slate-600">Answer all questions to get personalized career recommendations.</p>
 
 			<div className="mt-4">
@@ -71,11 +71,11 @@ function AptitudeTest() {
 
 			<form onSubmit={onSubmit} className="mt-6 space-y-5">
 				{questions.map((item) => (
-					<fieldset key={item.id} className="rounded-xl border border-slate-200 p-4">
+					<fieldset key={item.id} className="rounded-xl border border-indigo-100 bg-gradient-to-br from-white to-indigo-50/40 p-4">
 						<legend className="px-1 text-sm font-semibold text-slate-800">{item.question}</legend>
 						<div className="mt-3 grid gap-2 sm:grid-cols-2">
 							{item.options.map((option) => (
-								<label key={option} className="flex items-center gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-slate-700">
+								<label key={option} className="flex items-center gap-2 rounded-lg border border-indigo-100 bg-white px-3 py-2 text-sm text-slate-700">
 									<input
 										type="radio"
 										name={`q-${item.id}`}
@@ -96,7 +96,7 @@ function AptitudeTest() {
 				<button
 					type="submit"
 					disabled={isSubmitting}
-					className="flex items-center justify-center rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-70"
+					className="cc-cta flex items-center justify-center disabled:opacity-70"
 				>
 					{isSubmitting ? <Loader label="Submitting..." size="sm" /> : "Submit Answers"}
 				</button>

@@ -2,12 +2,12 @@ import logoMark from "../assets/logo-mark.svg";
 
 function Footer() {
 	return (
-		<footer className="border-t border-indigo-100 bg-white">
+		<footer className="border-t border-indigo-100/70 bg-white/70 backdrop-blur">
 			<div className="mx-auto grid w-full max-w-7xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-3 lg:px-8">
 				<div>
 					<div className="flex items-center gap-3">
 						<img src={logoMark} alt="CareerClarity logo" className="h-10 w-10" />
-						<h3 className="text-lg font-semibold text-slate-900">CareerClarity</h3>
+						<h3 className="cc-heading text-lg font-bold text-slate-900">CareerClarity</h3>
 					</div>
 					<p className="mt-2 text-sm text-slate-600">
 						One-Stop Personalized Career & Education Advisor for students and graduates.

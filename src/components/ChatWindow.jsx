@@ -54,15 +54,15 @@ function ChatWindow({ isOpen, onClose }) {
 	}
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-end justify-end bg-slate-900/30 p-4 sm:p-6" onClick={onClose}>
+		<div className="fixed inset-0 z-50 flex items-end justify-end bg-slate-900/40 p-4 backdrop-blur-[2px] sm:p-6" onClick={onClose}>
 			<div
-				className="flex h-[75vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-indigo-100"
+				className="flex h-[75vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-indigo-100 bg-white shadow-2xl"
 				onClick={(event) => event.stopPropagation()}
 				role="dialog"
 				aria-modal="true"
 				aria-label="Career chatbot"
 			>
-				<div className="flex items-center justify-between border-b border-indigo-100 px-4 py-3">
+				<div className="flex items-center justify-between border-b border-indigo-100 bg-gradient-to-r from-indigo-50 to-white px-4 py-3">
 					<h2 className="text-sm font-semibold text-slate-900">CareerClarity AI Chatbot</h2>
 					<button
 						type="button"
@@ -74,13 +74,13 @@ function ChatWindow({ isOpen, onClose }) {
 					</button>
 				</div>
 
-				<div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-4 py-4">
+				<div className="flex-1 space-y-3 overflow-y-auto bg-gradient-to-b from-slate-50 to-white px-4 py-4">
 					{messages.map((message) => (
 						<div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
 							<p
 								className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm leading-relaxed ${
 									message.role === "user"
-										? "bg-gradient-to-r from-blue-600 to-purple-600 text-white"
+										? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
 										: "bg-white text-slate-700 ring-1 ring-indigo-100"
 								}`}
 							>
@@ -115,12 +115,12 @@ function ChatWindow({ isOpen, onClose }) {
 							value={inputValue}
 							onChange={(event) => setInputValue(event.target.value)}
 							placeholder="Ask your career question..."
-							className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+							className="cc-input"
 						/>
 						<button
 							type="submit"
 							disabled={!canSend}
-							className="rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+							className="cc-cta px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
 						>
 							Send
 						</button>

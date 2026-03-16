@@ -40,9 +40,9 @@ function Dashboard() {
 
 	return (
 		<div className="space-y-6">
-			<section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-indigo-100 sm:p-8">
-				<p className="text-sm font-medium text-indigo-600">Profile Summary</p>
-				<h1 className="mt-2 text-2xl font-bold text-slate-900 sm:text-3xl">Welcome, {userName}</h1>
+			<section className="cc-surface p-6 sm:p-8">
+				<p className="cc-heading text-sm font-semibold uppercase tracking-wide text-indigo-600">Profile Summary</p>
+				<h1 className="cc-heading mt-2 text-2xl font-extrabold text-slate-900 sm:text-3xl">Welcome, {userName}</h1>
 				<p className="mt-2 text-sm text-slate-600">
 					Education Level: <span className="font-semibold text-slate-800">{educationLevel}</span>
 				</p>
@@ -52,17 +52,17 @@ function Dashboard() {
 			</section>
 
 			<section>
-				<h2 className="mb-4 text-lg font-semibold text-slate-900">Quick Actions</h2>
+				<h2 className="cc-heading mb-4 text-lg font-bold text-slate-900">Quick Actions</h2>
 				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{visibleCards.map((card) => (
 						<Link
 							key={card.title}
 							to={card.path}
-							className="group rounded-2xl bg-white p-5 shadow-sm ring-1 ring-indigo-100 transition hover:-translate-y-0.5 hover:shadow-md"
+							className="group rounded-2xl bg-white/95 p-5 shadow-[0_12px_30px_-18px_rgba(79,70,229,0.55)] ring-1 ring-indigo-100 transition hover:-translate-y-1 hover:shadow-[0_18px_34px_-16px_rgba(79,70,229,0.55)]"
 						>
-							<h3 className="text-base font-semibold text-slate-900 transition group-hover:text-indigo-600">{card.title}</h3>
+							<h3 className="cc-heading text-base font-bold text-slate-900 transition group-hover:text-indigo-600">{card.title}</h3>
 							<p className="mt-2 text-sm text-slate-600">{card.description}</p>
-							<p className="mt-4 text-sm font-medium text-indigo-600">Open module →</p>
+							<p className="mt-4 text-sm font-semibold text-indigo-600">Open module →</p>
 						</Link>
 					))}
 				</div>

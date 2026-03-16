@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import { Navigate, Route, Routes } from "react-router-dom";
@@ -14,12 +15,14 @@ import Alerts from "./pages/Alerts";
 import CVUpload from "./pages/CVUpload";
 import CVAnalysis from "./pages/CVAnalysis";
 import Chatbot from "./components/Chatbot";
+import { isAuthenticated, isGraduateUser, syncCurrentUser } from "./services/authService";
 
 function AppLayout({ children }) {
   return (
-		<div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-indigo-50 via-white to-purple-50 text-slate-800">
-			<div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-indigo-200/30 blur-3xl" />
-			<div className="pointer-events-none absolute -right-20 top-40 h-64 w-64 rounded-full bg-purple-200/30 blur-3xl" />
+		<div className="relative min-h-screen overflow-hidden text-slate-800">
+			<div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-indigo-300/30 blur-3xl" />
+			<div className="pointer-events-none absolute -right-20 top-40 h-64 w-64 rounded-full bg-sky-300/25 blur-3xl" />
+			<div className="pointer-events-none absolute bottom-16 left-1/3 h-52 w-52 rounded-full bg-fuchsia-200/20 blur-3xl" />
       <Navbar />
 			<main className="relative z-10 mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">{children}</main>
       <Footer />
@@ -28,22 +31,139 @@ function AppLayout({ children }) {
   );
 }
 
+function PrivateRoute({ children }) {
+	return isAuthenticated() ? children : <Navigate to="/login" replace />;
+}
+
+function GuestRoute({ children }) {
+	return isAuthenticated() ? <Navigate to="/dashboard" replace /> : children;
+}
+
+function GraduateRoute({ children }) {
+	if (!isAuthenticated()) {
+		return <Navigate to="/login" replace />;
+	}
+
+	return isGraduateUser() ? children : <Navigate to="/dashboard" replace />;
+}
+
 function App() {
+	const [isSessionReady, setIsSessionReady] = useState(false);
+
+	useEffect(() => {
+		const bootstrapSession = async () => {
+			if (isAuthenticated()) {
+				await syncCurrentUser();
+			}
+			setIsSessionReady(true);
+		};
+
+		bootstrapSession();
+	}, []);
+
+	if (!isSessionReady) {
+		return (
+			<AppLayout>
+				<div className="cc-surface mx-auto max-w-xl p-8 text-center">
+					<p className="cc-heading text-sm font-semibold text-indigo-600">Session Sync</p>
+					<p className="mt-2 text-sm font-medium text-slate-600">Loading your session...</p>
+				</div>
+			</AppLayout>
+		);
+	}
+
 	return (
 		<AppLayout>
 			<Routes>
 				<Route path="/" element={<Home />} />
-				<Route path="/login" element={<Login />} />
-				<Route path="/register" element={<Register />} />
-				<Route path="/dashboard" element={<Dashboard />} />
-				<Route path="/profile" element={<Profile />} />
-				<Route path="/aptitude-test" element={<AptitudeTest />} />
-				<Route path="/recommendations" element={<Recommendations />} />
-				<Route path="/roadmap" element={<Roadmap />} />
-				<Route path="/college-finder" element={<CollegeFinder />} />
-				<Route path="/alerts" element={<Alerts />} />
-				<Route path="/cv-upload" element={<CVUpload />} />
-				<Route path="/cv-analysis" element={<CVAnalysis />} />
+				<Route
+					path="/login"
+					element={
+						<GuestRoute>
+							<Login />
+						</GuestRoute>
+					}
+				/>
+				<Route
+					path="/register"
+					element={
+						<GuestRoute>
+							<Register />
+						</GuestRoute>
+					}
+				/>
+				<Route
+					path="/dashboard"
+					element={
+						<PrivateRoute>
+							<Dashboard />
+						</PrivateRoute>
+					}
+				/>
+				<Route
+					path="/profile"
+					element={
+						<PrivateRoute>
+							<Profile />
+						</PrivateRoute>
+					}
+				/>
+				<Route
+					path="/aptitude-test"
+					element={
+						<PrivateRoute>
+							<AptitudeTest />
+						</PrivateRoute>
+					}
+				/>
+				<Route
+					path="/recommendations"
+					element={
+						<PrivateRoute>
+							<Recommendations />
+						</PrivateRoute>
+					}
+				/>
+				<Route
+					path="/roadmap"
+					element={
+						<PrivateRoute>
+							<Roadmap />
+						</PrivateRoute>
+					}
+				/>
+				<Route
+					path="/college-finder"
+					element={
+						<PrivateRoute>
+							<CollegeFinder />
+						</PrivateRoute>
+					}
+				/>
+				<Route
+					path="/alerts"
+					element={
+						<PrivateRoute>
+							<Alerts />
+						</PrivateRoute>
+					}
+				/>
+				<Route
+					path="/cv-upload"
+					element={
+						<GraduateRoute>
+							<CVUpload />
+						</GraduateRoute>
+					}
+				/>
+				<Route
+					path="/cv-analysis"
+					element={
+						<GraduateRoute>
+							<CVAnalysis />
+						</GraduateRoute>
+					}
+				/>
 				<Route path="*" element={<Navigate to="/" replace />} />
 			</Routes>
 		</AppLayout>

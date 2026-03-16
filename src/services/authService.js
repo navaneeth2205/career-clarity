@@ -17,9 +17,19 @@ export function saveAuthSession(data) {
 		localStorage.setItem("authToken", data.token);
 	}
 
+	if (data?.refreshToken) {
+		localStorage.setItem("refreshToken", data.refreshToken);
+	}
+
 	if (data?.user) {
 		localStorage.setItem("currentUser", JSON.stringify(data.user));
 	}
+}
+
+export function clearAuthSession() {
+	localStorage.removeItem("authToken");
+	localStorage.removeItem("refreshToken");
+	localStorage.removeItem("currentUser");
 }
 
 export function getCurrentUser() {
@@ -29,6 +39,15 @@ export function getCurrentUser() {
 	} catch {
 		return null;
 	}
+}
+
+export function isAuthenticated() {
+	return Boolean(localStorage.getItem("authToken"));
+}
+
+export function isGraduateUser() {
+	const user = getCurrentUser();
+	return user?.educationLevel === "Graduate";
 }
 
 export async function updateUserProfile(payload) {
@@ -43,5 +62,39 @@ export async function updateUserProfile(payload) {
 		const updated = { ...existing, ...payload };
 		localStorage.setItem("currentUser", JSON.stringify(updated));
 		return { user: updated };
+	}
+}
+
+export async function logoutUser() {
+	const refreshToken = localStorage.getItem("refreshToken");
+
+	try {
+		if (refreshToken) {
+			await api.post("/auth/logout", { refreshToken });
+		}
+	} finally {
+		clearAuthSession();
+	}
+}
+
+export async function getMyProfile() {
+	const response = await api.get("/users/me");
+	return response.data;
+}
+
+export async function syncCurrentUser() {
+	if (!isAuthenticated()) {
+		return null;
+	}
+
+	try {
+		const data = await getMyProfile();
+		if (data?.user) {
+			localStorage.setItem("currentUser", JSON.stringify(data.user));
+		}
+		return data?.user || null;
+	} catch {
+		clearAuthSession();
+		return null;
 	}
 }

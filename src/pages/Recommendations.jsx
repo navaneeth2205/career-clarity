@@ -28,7 +28,7 @@ function Recommendations() {
 
 	if (isLoading) {
 		return (
-			<section className="rounded-2xl bg-white p-8 shadow-sm ring-1 ring-indigo-100">
+			<section className="cc-surface p-8">
 				<Loader label="Loading recommendations..." />
 			</section>
 		);
@@ -36,8 +36,8 @@ function Recommendations() {
 
 	return (
 		<section className="space-y-4">
-			<div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-indigo-100 sm:p-8">
-				<h1 className="text-2xl font-bold text-slate-900">Top Career Recommendations</h1>
+			<div className="cc-surface p-6 sm:p-8">
+				<h1 className="cc-heading text-2xl font-extrabold text-slate-900">Top Career Recommendations</h1>
 				<p className="mt-2 text-sm text-slate-600">Based on your profile and aptitude preferences.</p>
 			</div>
 

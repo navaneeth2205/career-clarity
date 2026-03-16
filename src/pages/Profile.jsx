@@ -49,13 +49,13 @@ function Profile() {
 	const isDisabled = !isEditMode || isSaving;
 
 	return (
-		<section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-indigo-100 sm:p-8">
+		<section className="cc-surface p-6 sm:p-8">
 			<div className="flex flex-wrap items-center justify-between gap-3">
-				<h1 className="text-2xl font-bold text-slate-900">Profile</h1>
+				<h1 className="cc-heading text-2xl font-extrabold text-slate-900">Profile</h1>
 				<button
 					type="button"
 					onClick={() => setIsEditMode((prev) => !prev)}
-					className="rounded-xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50"
+					className="rounded-xl border border-indigo-200 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-50"
 				>
 					{isEditMode ? "Cancel" : "Edit Profile"}
 				</button>
@@ -69,7 +69,7 @@ function Profile() {
 						value={formData.name}
 						onChange={onChange}
 						disabled={isDisabled}
-						className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
+						className="cc-input disabled:bg-slate-50"
 					/>
 				</div>
 				<div>
@@ -79,7 +79,7 @@ function Profile() {
 						value={formData.educationLevel}
 						onChange={onChange}
 						disabled={isDisabled}
-						className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
+						className="cc-input disabled:bg-slate-50"
 					/>
 				</div>
 				<div>
@@ -90,7 +90,7 @@ function Profile() {
 						onChange={onChange}
 						disabled={isDisabled}
 						placeholder="Ex: Python, UI Design"
-						className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
+						className="cc-input disabled:bg-slate-50"
 					/>
 				</div>
 				<div>
@@ -101,7 +101,7 @@ function Profile() {
 						onChange={onChange}
 						disabled={isDisabled}
 						placeholder="Ex: Bengaluru"
-						className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
+						className="cc-input disabled:bg-slate-50"
 					/>
 				</div>
 			</div>
@@ -110,7 +110,7 @@ function Profile() {
 				<label className="mb-2 block text-sm font-medium text-slate-700">Interests</label>
 				<div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
 					{interestOptions.map((interest) => (
-						<label key={interest} className="flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm text-slate-700">
+						<label key={interest} className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-gradient-to-br from-white to-indigo-50 px-3 py-2 text-sm text-slate-700">
 							<input
 								type="checkbox"
 								checked={formData.interests.includes(interest)}
@@ -131,7 +131,7 @@ function Profile() {
 					onChange={onChange}
 					disabled={isDisabled}
 					rows={4}
-					className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
+					className="cc-input disabled:bg-slate-50"
 				/>
 			</div>
 
@@ -146,7 +146,7 @@ function Profile() {
 					type="button"
 					onClick={onSave}
 					disabled={isSaving}
-					className="mt-5 flex items-center justify-center rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-70"
+					className="cc-cta mt-5 flex items-center justify-center disabled:opacity-70"
 				>
 					{isSaving ? <Loader label="Saving..." size="sm" /> : "Save Profile"}
 				</button>

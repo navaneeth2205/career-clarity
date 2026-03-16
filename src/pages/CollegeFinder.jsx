@@ -42,8 +42,8 @@ function CollegeFinder() {
 
 	return (
 		<section className="space-y-4">
-			<div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-indigo-100 sm:p-8">
-				<h1 className="text-2xl font-bold text-slate-900">College Finder</h1>
+			<div className="cc-surface p-6 sm:p-8">
+				<h1 className="cc-heading text-2xl font-extrabold text-slate-900">College Finder</h1>
 				<p className="mt-2 text-sm text-slate-600">Search and filter colleges by location, course, and fees.</p>
 
 				<form onSubmit={onSubmit} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -52,21 +52,21 @@ function CollegeFinder() {
 						value={filters.search}
 						onChange={onChange}
 						placeholder="Search college"
-						className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+						className="cc-input"
 					/>
 					<input
 						name="location"
 						value={filters.location}
 						onChange={onChange}
 						placeholder="Location"
-						className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+						className="cc-input"
 					/>
 					<input
 						name="course"
 						value={filters.course}
 						onChange={onChange}
 						placeholder="Course"
-						className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+						className="cc-input"
 					/>
 					<div className="flex gap-2">
 						<input
@@ -74,11 +74,11 @@ function CollegeFinder() {
 							value={filters.fees}
 							onChange={onChange}
 							placeholder="Fees"
-							className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+							className="cc-input w-full"
 						/>
 						<button
 							type="submit"
-							className="rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95"
+							className="cc-cta px-4 py-2.5 text-sm"
 						>
 							Search
 						</button>
@@ -89,7 +89,7 @@ function CollegeFinder() {
 			{errorMessage && <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p>}
 
 			{isLoading ? (
-				<section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-indigo-100">
+				<section className="cc-surface p-8">
 					<Loader label="Loading colleges..." />
 				</section>
 			) : (
