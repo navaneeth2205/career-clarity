@@ -8,6 +8,7 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import QuickTestPage from "./pages/QuickTest";
+import TestPage from "./pages/TestPage";
 import Recommendations from "./pages/Recommendations";
 import Roadmap from "./pages/Roadmap";
 import CollegeFinder from "./pages/CollegeFinder";
@@ -112,7 +113,15 @@ function App() {
 					path="/quick-test"
 					element={
 						<PrivateRoute>
-							<QuickTestPage />
+							<TestPage />
+						</PrivateRoute>
+					}
+				/>
+				<Route
+					path="/test"
+					element={
+						<PrivateRoute>
+							<TestPage />
 						</PrivateRoute>
 					}
 				/>
