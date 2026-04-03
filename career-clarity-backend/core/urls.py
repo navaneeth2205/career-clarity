@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from cv_module.views import chatbot_api
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -9,6 +10,7 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view()),
 
     path('api/cv/', include('cv_module.urls')),
+    path('api/chatbot/', chatbot_api),
     path('api/auth/', include('accounts.urls')),
     path('api/test/', include('test_module.urls')),
     path('api/predict/', include('prediction_module.urls')),

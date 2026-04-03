@@ -47,6 +47,17 @@ function Recommendations() {
 
 	return (
 		<div className="space-y-8">
+			<div className="cc-fade-in rounded-2xl border border-indigo-200 bg-indigo-50 p-5" style={{ animationDelay: "80ms" }}>
+				<p className="text-sm font-semibold text-indigo-700">Advanced Prediction</p>
+				<p className="mt-1 text-slate-700">Take a skill test to unlock deeper and more accurate recommendations.</p>
+				<Link
+					to="/quick-test"
+					className="mt-3 inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+				>
+					Go to Skill Test →
+				</Link>
+			</div>
+
 			{/* Header Card */}
 			<div className="cc-fade-in relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 via-teal-500 to-cyan-500 p-8 text-white shadow-xl sm:p-10">
 				<div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl"></div>

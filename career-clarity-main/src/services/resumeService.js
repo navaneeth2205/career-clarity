@@ -68,11 +68,22 @@ export async function hasUploadedCV() {
 
 export async function getProfileReadiness() {
 	/**
-	 * Checks if user has completed their profile setup.
-	 * For all users: if profile skills exist, profile is considered ready.
-	 * If profile skills are missing, fall back to CV data check.
+	 * Checks if user has completed onboarding enough to stop chatbot auto-open.
+	 * Ready when at least one is true:
+	 * - Profile completion is done (name + interests)
+	 * - Profile skills are present
+	 * - CV skills are present
 	 */
 	try {
+		try {
+			const completion = await api.get("/cv/profile-completion-check/");
+			if (completion?.data?.is_complete) {
+				return true;
+			}
+		} catch {
+			// Continue with other readiness checks.
+		}
+
 		const response = await api.get("/cv/profile-skills/");
 		const profile = response.data;
 		const hasProfileSkills = Array.isArray(profile.skills) && profile.skills.length > 0;
@@ -82,7 +93,10 @@ export async function getProfileReadiness() {
 
 		try {
 			const cvResponse = await api.get("/cv/cv-data/");
-			return Array.isArray(cvResponse.data?.skills) && cvResponse.data.skills.length > 0;
+			if (cvResponse?.data?.uploaded === true) {
+				return true;
+			}
+			return Array.isArray(cvResponse.data?.skills);
 		} catch {
 			return false;
 		}

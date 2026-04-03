@@ -295,9 +295,17 @@ const TestPage = () => {
         setQuestions([]);
         setAnswers({});
         setCurrentQuestion(0);
-        await loadCooldownStatus();
-        await loadSkillOptions();
-        setPage("skillsSelection");
+        navigate("/dashboard");
+        window.setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("careerclarity:open-chatbot", {
+              detail: {
+                initialMessage:
+                  "I completed the quick test. Please guide me to recommendations and the next best skill test.",
+              },
+            })
+          );
+        }, 200);
         return;
       }
 

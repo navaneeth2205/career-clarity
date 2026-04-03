@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import ChatWindow from "./ChatWindow";
 import { getCurrentUser, isAuthenticated } from "../services/authService";
 import { getProfileReadiness } from "../services/resumeService";
+import { getQuickTest } from "../services/testService";
 import { useLocation } from "react-router-dom";
 
 function Chatbot() {
@@ -10,7 +11,6 @@ function Chatbot() {
 	const location = useLocation();
 	const userIdentity = getCurrentUser()?.username || "guest";
 	const forceCloseRoutes = ["/profile", "/quick-test"];
-	const autoOpenRoutes = ["/dashboard"];
 
 	useEffect(() => {
 		let isMounted = true;
@@ -18,10 +18,6 @@ function Chatbot() {
 		const autoOpenForNewCVUsers = async () => {
 			if (forceCloseRoutes.includes(location.pathname)) {
 				setIsOpen(false);
-				return;
-			}
-
-			if (!autoOpenRoutes.includes(location.pathname)) {
 				return;
 			}
 
@@ -36,12 +32,18 @@ function Chatbot() {
 			}
 
 			try {
-				const isProfileReady = await getProfileReadiness();
+				const [isProfileReady, quickTestData] = await Promise.all([
+					getProfileReadiness(),
+					getQuickTest().catch(() => ({ attempted: false })),
+				]);
 				if (!isMounted) {
 					return;
 				}
 
-				if (!isProfileReady) {
+				const hasCompletedQuickTest = Boolean(quickTestData?.attempted);
+
+				if (!isProfileReady || hasCompletedQuickTest) {
+					// Open for onboarding users and also after quick-test completion to guide next steps.
 					setIsOpen(true);
 				} else {
 					setIsOpen(false);

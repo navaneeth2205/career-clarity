@@ -21,6 +21,7 @@ function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMe
   const inputRef = useRef(null);
   const fileInputRef = useRef(null); // ✅ FIXED
   const lastAutoSentMessageRef = useRef("");
+  const onboardingBootstrappedRef = useRef(false);
 
   const navigate = useNavigate();
 
@@ -28,6 +29,7 @@ function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMe
     setMessages([{ ...initialBotMessage }]);
     setInputValue("");
     setIsBotTyping(false);
+    onboardingBootstrappedRef.current = false;
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -129,7 +131,7 @@ function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMe
       const uploadReply =
         detectedSkills.length > 0
           ? `${uploadStatusMessage} I identified: ${detectedSkills.join(", ")}. Next step is to take the ${nextTestLabel.toLowerCase()}.`
-          : `${uploadStatusMessage} I couldn't infer enough skills yet. Please share your interest subjects (for example: Maths, Biology, Computer Science).`;
+          : `${uploadStatusMessage} Upload complete. You can continue by updating profile details or taking the ${nextTestLabel.toLowerCase()}.`;
 
       setMessages((prev) => [
         ...prev,
@@ -150,7 +152,11 @@ function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMe
             actions:
               detectedSkills.length > 0
                 ? [{ label: `Take ${nextTestLabel}`, route: "/quick-test" }, { label: "Close Chat", type: "close" }]
-                : [{ label: "Upload Again", type: "upload" }, { label: "Close Chat", type: "close" }],
+                : [
+                    { label: "Update Profile", route: "/profile" },
+                    { label: `Take ${nextTestLabel}`, route: "/quick-test" },
+                    { label: "Close Chat", type: "close" },
+                  ],
           },
         ]);
         setIsBotTyping(false);
@@ -171,15 +177,18 @@ function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMe
     }
   };
 
-  const sendMessage = async (rawMessage) => {
+  const sendMessage = async (rawMessage, options = {}) => {
+    const { includeUserMessage = true } = options;
     const userMessage = rawMessage.trim();
     if (!userMessage || isBotTyping) return;
 
     // show user message
-    setMessages((prev) => [
-      ...prev,
-      { id: Date.now(), role: "user", text: userMessage },
-    ]);
+    if (includeUserMessage) {
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now(), role: "user", text: userMessage },
+      ]);
+    }
 
     setIsBotTyping(true);
 
@@ -243,6 +252,19 @@ function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMe
     setInputValue("");
     await sendMessage(userMessage);
   };
+
+  useEffect(() => {
+    if (!isOpen || isBotTyping || onboardingBootstrappedRef.current) {
+      return;
+    }
+
+    if (initialMessage && initialMessage.trim()) {
+      return;
+    }
+
+    onboardingBootstrappedRef.current = true;
+    sendMessage("__onboarding__", { includeUserMessage: false });
+  }, [isOpen, isBotTyping, initialMessage]);
 
   useEffect(() => {
     if (!isOpen || !initialMessage || isBotTyping) {
