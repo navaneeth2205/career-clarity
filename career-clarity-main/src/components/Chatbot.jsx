@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import ChatWindow from "./ChatWindow";
 import { getCurrentUser, isAuthenticated } from "../services/authService";
 import { getProfileReadiness } from "../services/resumeService";
-import { getQuickTest } from "../services/testService";
 import { useLocation } from "react-router-dom";
 
 function Chatbot() {
@@ -15,7 +14,7 @@ function Chatbot() {
 	useEffect(() => {
 		let isMounted = true;
 
-		const autoOpenForNewCVUsers = async () => {
+		const autoOpenForDashboard = async () => {
 			if (forceCloseRoutes.includes(location.pathname)) {
 				setIsOpen(false);
 				return;
@@ -26,36 +25,31 @@ function Chatbot() {
 				return;
 			}
 
-			const currentUser = getCurrentUser();
-			if (!currentUser?.username) {
+			if (location.pathname !== "/dashboard") {
 				return;
 			}
 
 			try {
-				const [isProfileReady, quickTestData] = await Promise.all([
-					getProfileReadiness(),
-					getQuickTest().catch(() => ({ attempted: false })),
-				]);
-				if (!isMounted) {
-					return;
-				}
+				const isReady = await getProfileReadiness();
+				if (!isMounted) return;
 
-				const hasCompletedQuickTest = Boolean(quickTestData?.attempted);
-
-				if (!isProfileReady || hasCompletedQuickTest) {
-					// Open for onboarding users and also after quick-test completion to guide next steps.
+				if (!isReady) {
+					setPendingInitialMessage(
+						"Welcome! Please upload your CV or marks card, or update your profile to continue."
+					);
 					setIsOpen(true);
-				} else {
-					setIsOpen(false);
 				}
 			} catch {
 				if (isMounted) {
-					setIsOpen(false);
+					setPendingInitialMessage(
+						"Welcome! Please upload your CV or marks card, or update your profile to continue."
+					);
+					setIsOpen(true);
 				}
 			}
 		};
 
-		autoOpenForNewCVUsers();
+		autoOpenForDashboard();
 
 		return () => {
 			isMounted = false;

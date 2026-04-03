@@ -5,6 +5,7 @@ import TestResultPage from "./TestResultPage";
 import SkillsSelectionPage from "./SkillsSelectionPage";
 import SystemCheckPage from "./SystemCheckPage";
 import { getQuickTest, submitQuickTest, getSkillTest, submitSkillTest, getSkillCooldownStatus, getSkillOptions } from "../services/testService";
+import { getCurrentUser } from "../services/authService";
 
 const WARNING_DURATION_MS = 2500;
 const QUICK_TEST_DURATION_SECONDS = 10 * 60;
@@ -33,6 +34,7 @@ const TestPage = () => {
 
   const timerRef = useRef(null);
   const warningRef = useRef(null);
+  const currentUserKey = getCurrentUser()?.username || getCurrentUser()?.name || "guest";
 
   const isSkillTestPage = page === "skillTest";
 
@@ -43,7 +45,7 @@ const TestPage = () => {
       clearWarningTimer();
       exitFullscreen();
     };
-  }, []);
+  }, [currentUserKey]);
 
   useEffect(() => {
     if (!isSkillTestPage) return undefined;
@@ -295,13 +297,13 @@ const TestPage = () => {
         setQuestions([]);
         setAnswers({});
         setCurrentQuestion(0);
-        navigate("/dashboard");
+        navigate("/recommendations");
         window.setTimeout(() => {
           window.dispatchEvent(
             new CustomEvent("careerclarity:open-chatbot", {
               detail: {
                 initialMessage:
-                  "I completed the quick test. Please guide me to recommendations and the next best skill test.",
+                  "Quick test completed. View your recommendations and choose a skill test for better predictions.",
               },
             })
           );

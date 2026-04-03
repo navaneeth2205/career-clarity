@@ -22,6 +22,7 @@ function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMe
   const fileInputRef = useRef(null); // ✅ FIXED
   const lastAutoSentMessageRef = useRef("");
   const onboardingBootstrappedRef = useRef(false);
+  const initialNoticeShownRef = useRef(false);
 
   const navigate = useNavigate();
 
@@ -30,6 +31,7 @@ function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMe
     setInputValue("");
     setIsBotTyping(false);
     onboardingBootstrappedRef.current = false;
+    initialNoticeShownRef.current = false;
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -73,6 +75,23 @@ function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMe
       mounted = false;
     };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !initialMessage || initialNoticeShownRef.current) {
+      return;
+    }
+
+    initialNoticeShownRef.current = true;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        role: "bot",
+        text: initialMessage.trim(),
+      },
+    ]);
+    onInitialMessageSent?.();
+  }, [isOpen, initialMessage, onInitialMessageSent]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -258,10 +277,6 @@ function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMe
       return;
     }
 
-    if (initialMessage && initialMessage.trim()) {
-      return;
-    }
-
     onboardingBootstrappedRef.current = true;
     sendMessage("__onboarding__", { includeUserMessage: false });
   }, [isOpen, isBotTyping, initialMessage]);
@@ -276,8 +291,6 @@ function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMe
     }
 
     lastAutoSentMessageRef.current = initialMessage;
-    sendMessage(initialMessage);
-    onInitialMessageSent?.();
   }, [isOpen, initialMessage, isBotTyping, onInitialMessageSent, nextTestLabel]);
 
   if (!isOpen) return null;

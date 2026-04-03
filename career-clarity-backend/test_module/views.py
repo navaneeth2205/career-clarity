@@ -5,6 +5,8 @@ from .models import Question , TestResult ,SkillTestResult
 import random
 from django.utils import timezone
 from datetime import timedelta
+from accounts.models import Profile
+from cv_module.models import CVProfile
 
 
 
@@ -12,8 +14,6 @@ from datetime import timedelta
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_quick_test(request):
-    import random
-
     if TestResult.objects.filter(user=request.user).exists():
         return Response({
             "attempted": True,
@@ -21,15 +21,74 @@ def get_quick_test(request):
             "questions": []
         })
 
-    # General questions
-    general_qs = list(Question.objects.filter(type="general"))
+    profile, _ = Profile.objects.get_or_create(
+        user=request.user,
+        defaults={
+            "full_name": request.user.username,
+            "email": request.user.email or "",
+            "education_level": "Class 12",
+        },
+    )
+
+    class_level = str(profile.education_level or "Class 12").strip() or "Class 12"
+
+    cv_profile = CVProfile.objects.filter(user=request.user).first()
+    topic_hints = []
+    for source in (
+        profile.skills or [],
+        profile.interests or [],
+        getattr(cv_profile, "skills", []) or [],
+    ):
+        if isinstance(source, list):
+            topic_hints.extend([str(item).strip() for item in source if str(item).strip()])
+
+    if profile.career_goal:
+        topic_hints.append(str(profile.career_goal).strip())
+
+    topic_hints = list(dict.fromkeys(topic_hints))
+
+    def class_scope_queryset(question_type):
+        return Question.objects.filter(
+            type=question_type,
+            class_level__iexact=class_level,
+        )
+
+    general_qs = list(class_scope_queryset("general"))
+    interest_qs = list(class_scope_queryset("interest"))
+
+    total_available = len(general_qs) + len(interest_qs)
+    target_total = 8
+
+    if total_available < target_total:
+        from .ai_utils import generate_and_save_quick_test_questions
+        generate_and_save_quick_test_questions(
+            class_level,
+            required_general=5,
+            required_interest=3,
+            topic_hints=topic_hints,
+        )
+        general_qs = list(class_scope_queryset("general"))
+        interest_qs = list(class_scope_queryset("interest"))
+
+    # Prefer class-matched questions; if class-specific supply is not enough, include generic ones only after class-matched
     general_selected = random.sample(general_qs, min(len(general_qs), 5))
 
-    # Interest questions
-    interest_qs = list(Question.objects.filter(type="interest"))
     interest_selected = random.sample(interest_qs, min(len(interest_qs), 3))
 
     all_questions = general_selected + interest_selected
+
+    if len(all_questions) < target_total:
+        from .ai_utils import generate_and_save_quick_test_questions
+        generate_and_save_quick_test_questions(
+            class_level,
+            required_general=max(5, 5 - len(general_selected)),
+            required_interest=max(3, 3 - len(interest_selected)),
+            topic_hints=topic_hints,
+        )
+        general_qs = list(class_scope_queryset("general"))
+        interest_qs = list(class_scope_queryset("interest"))
+        all_questions = random.sample(general_qs, min(len(general_qs), 5)) + random.sample(interest_qs, min(len(interest_qs), 3))
+
     random.shuffle(all_questions)
 
     data = []
@@ -47,7 +106,11 @@ def get_quick_test(request):
             }
         })
 
-    return Response({"attempted": False, "questions": data})
+    message = "Quick test ready."
+    if len(data) < target_total:
+        message = "Quick test is ready with the available class-matched questions."
+
+    return Response({"attempted": False, "questions": data, "message": message, "class_level": class_level})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def submit_quick_test(request):
@@ -215,12 +278,14 @@ def get_skill_cooldown_status(request):
             skill_param,
             {"cooldown": False, "remaining_seconds": 0, "message": "Skill test is available."},
         )
-        return Response({"skill": skill_param, **skill_payload})
+        return Response({"skill": skill_param, "user_id": user.id, "username": user.username, **skill_payload})
 
     return Response({
         "cooldown": bool(cooldown_by_skill),
         "cooldown_by_skill": cooldown_by_skill,
         "message": "Per-skill cooldown status loaded.",
+        "user_id": user.id,
+        "username": user.username,
     })
 
 

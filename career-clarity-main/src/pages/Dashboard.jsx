@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getCurrentUser } from "../services/authService";
-import { getQuickTest } from "../services/testService";
 
 const actionCards = [
 	{
@@ -60,45 +59,12 @@ const statCards = [
 ];
 
 function Dashboard() {
-	const [hasCompletedQuickTest, setHasCompletedQuickTest] = useState(false);
-
-	useEffect(() => {
-		let mounted = true;
-
-		const loadQuickTestStatus = async () => {
-			try {
-				const quickTestData = await getQuickTest();
-				if (!mounted) {
-					return;
-				}
-				setHasCompletedQuickTest(Boolean(quickTestData?.attempted));
-			} catch {
-				if (mounted) {
-					setHasCompletedQuickTest(false);
-				}
-			}
-		};
-
-		loadQuickTestStatus();
-
-		return () => {
-			mounted = false;
-		};
-	}, []);
-
 	const user = getCurrentUser();
 	const userName = user?.name || "Student";
 	const educationLevel = user?.educationLevel || "Class 12";
 	const isGraduate = educationLevel === "Graduate";
 
-	const testAction = hasCompletedQuickTest
-		? {
-			title: "Take Skill Test",
-			description: "Choose your skill and continue with the timed skill assessment.",
-			path: "/quick-test",
-			key: "test",
-		}
-		: actionCards[0];
+	const testAction = actionCards[0];
 
 	const visibleCards = [testAction, ...actionCards.slice(1)].filter(
 		(card) => !card.onlyGraduate || isGraduate
@@ -111,8 +77,8 @@ function Dashboard() {
 
 		return {
 			...card,
-			label: hasCompletedQuickTest ? "Skill Test" : "Quick Test",
-			value: hasCompletedQuickTest ? "Ready to Start" : "Ready to Start",
+			label: "Quick Test",
+			value: "Ready to Start",
 		};
 	});
 
@@ -188,7 +154,6 @@ function Dashboard() {
 						// Emoji mapping for action cards
 						const emojiMap = {
 							"Take Quick Test": "🧠",
-							"Take Skill Test": "🧠",
 							"View Recommendations": "🎯",
 							"College Finder": "🏫",
 							"Alerts": "🔔",
