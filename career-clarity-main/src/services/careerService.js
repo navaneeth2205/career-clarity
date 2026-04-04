@@ -87,9 +87,39 @@ const fallbackRoadmap = {
 };
 
 const fallbackAlerts = [
-	{ id: 1, type: "Admission", title: "IIT Admissions Round 1", date: "2026-04-18" },
-	{ id: 2, type: "Scholarship", title: "National Scholarship Portal Deadline", date: "2026-03-30" },
-	{ id: 3, type: "Exam", title: "CUET Registration Closes", date: "2026-04-10" },
+	{
+		id: 1,
+		type: "admission",
+		title: "IIT Admissions Round 1",
+		description: "Admission notifications and important dates for eligible candidates.",
+		eligibility: "Class 12 students",
+		deadline: "2026-04-18",
+		deadline_display: "2026-04-18",
+		link: "https://www.jee.gov.in/",
+		source: "Official admissions portal",
+	},
+	{
+		id: 2,
+		type: "scholarship",
+		title: "National Scholarship Portal Deadline",
+		description: "Check official eligibility and apply before the closing date.",
+		eligibility: "Class 10, Class 12, UG and PG students",
+		deadline: "2026-03-30",
+		deadline_display: "2026-03-30",
+		link: "https://scholarships.gov.in/",
+		source: "National Scholarship Portal",
+	},
+	{
+		id: 3,
+		type: "exam",
+		title: "CUET Registration Closes",
+		description: "Exam registration notice with eligibility guidelines and application details.",
+		eligibility: "Class 12 students",
+		deadline: "2026-04-10",
+		deadline_display: "2026-04-10",
+		link: "https://cuet.nta.nic.in/",
+		source: "NTA",
+	},
 ];
 
 export async function submitQuickTestAnswers(payload) {
@@ -117,7 +147,7 @@ export async function getCareerRoadmap(career) {
 
 export async function getAlerts() {
 	try {
-		const response = await api.get("/alerts");
+		const response = await api.get("/alerts/");
 		return response.data;
 	} catch {
 		return { alerts: fallbackAlerts };

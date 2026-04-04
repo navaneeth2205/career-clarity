@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/auth/', include('accounts.urls')),
     path('api/test/', include('test_module.urls')),
     path('api/predict/', include('prediction_module.urls')),
+    path('api/', include('alerts_module.urls')),
     path('api/roadmap/', get_roadmap),
     path('api/colleges/', get_colleges),
     path('api/college/details/', get_college_details),

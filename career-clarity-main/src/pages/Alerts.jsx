@@ -1,11 +1,24 @@
 import { useEffect, useState } from "react";
 import Loader from "../components/Loader";
+import AlertDetailsModal from "../components/AlertDetailsModal";
 import { getAlerts } from "../services/careerService";
+
+const PAGE_SIZE = 10;
+
+const typeConfig = {
+	scholarship: { emoji: "💰", color: "emerald", accent: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+	internship: { emoji: "🧑‍💻", color: "blue", accent: "border-blue-200 bg-blue-50 text-blue-700" },
+	job: { emoji: "💼", color: "indigo", accent: "border-indigo-200 bg-indigo-50 text-indigo-700" },
+	exam: { emoji: "📝", color: "orange", accent: "border-orange-200 bg-orange-50 text-orange-700" },
+	default: { emoji: "📢", color: "slate", accent: "border-slate-200 bg-slate-50 text-slate-700" },
+};
 
 function Alerts() {
 	const [alerts, setAlerts] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [errorMessage, setErrorMessage] = useState("");
+	const [currentPage, setCurrentPage] = useState(1);
+	const [selectedAlert, setSelectedAlert] = useState(null);
 
 	useEffect(() => {
 		const loadAlerts = async () => {
@@ -15,6 +28,7 @@ function Alerts() {
 			try {
 				const data = await getAlerts();
 				setAlerts(data.alerts || []);
+				setCurrentPage(1);
 			} catch {
 				setErrorMessage("Unable to fetch alerts right now.");
 			} finally {
@@ -24,6 +38,21 @@ function Alerts() {
 
 		loadAlerts();
 	}, []);
+
+	const totalPages = Math.max(1, Math.ceil(alerts.length / PAGE_SIZE));
+	const safePage = Math.min(currentPage, totalPages);
+	const startIndex = (safePage - 1) * PAGE_SIZE;
+	const currentAlerts = alerts.slice(startIndex, startIndex + PAGE_SIZE);
+
+	const goToPage = (page) => {
+		const nextPage = Math.min(Math.max(page, 1), totalPages);
+		setCurrentPage(nextPage);
+		window.scrollTo({ top: 0, behavior: "smooth" });
+	};
+
+	const handleViewDetails = (alert) => {
+		setSelectedAlert(alert);
+	};
 
 	return (
 		<div className="space-y-8">
@@ -56,43 +85,87 @@ function Alerts() {
 					<h2 className="cc-fade-in mb-6 text-2xl font-extrabold text-slate-900" style={{ animationDelay: "150ms" }}>
 						({alerts.length}) alerts for you
 					</h2>
+					<div className="cc-fade-in mb-6 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between" style={{ animationDelay: "175ms" }}>
+						<p className="text-sm text-slate-600">
+							Showing <span className="font-semibold text-slate-900">{startIndex + 1}</span> to <span className="font-semibold text-slate-900">{Math.min(startIndex + PAGE_SIZE, alerts.length)}</span> of <span className="font-semibold text-slate-900">{alerts.length}</span>
+						</p>
+						<p className="text-sm text-slate-600">
+							Page <span className="font-semibold text-slate-900">{safePage}</span> of <span className="font-semibold text-slate-900">{totalPages}</span>
+						</p>
+					</div>
 					<div className="space-y-4">
-						{alerts.map((alert, index) => {
-							// Type-based emoji and color mapping
-							const typeConfig = {
-								scholarship: { emoji: "💰", color: "emerald" },
-								deadline: { emoji: "⏰", color: "orange" },
-								exam: { emoji: "📝", color: "blue" },
-								admission: { emoji: "🎓", color: "purple" },
-								default: { emoji: "📢", color: "indigo" },
-							};
-
+						{currentAlerts.map((alert, index) => {
 							const config = typeConfig[alert.type?.toLowerCase()] || typeConfig.default;
 
 							return (
 								<article
 									key={alert.id}
-									className={`cc-fade-in rounded-2xl border-2 border-${config.color}-200 bg-gradient-to-br from-${config.color}-50 to-${config.color}-50/50 p-6 shadow-md transition hover:shadow-lg hover:border-${config.color}-300`}
+									className={`cc-fade-in rounded-2xl border-2 ${config.accent} p-6 shadow-md transition hover:shadow-lg`}
 									style={{ animationDelay: `${200 + index * 50}ms` }}
 								>
-									<div className="flex items-start gap-4">
-										<div className={`text-3xl`}>{config.emoji}</div>
-										<div className="flex-1">
-											<p className={`text-xs font-bold uppercase tracking-wider text-${config.color}-600`}>
-												{alert.type || "Notification"}
+									<div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+										<div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-3xl shadow-sm">
+											{config.emoji}
+										</div>
+										<div className="flex-1 space-y-4">
+											<div className="flex flex-wrap items-center gap-2">
+												<span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${config.accent}`}>
+													{alert.type || "Notification"}
+												</span>
+												<span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+													Eligibility: {alert.eligibility || alert.level || "To be announced"}
+												</span>
+												<span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+													Deadline: {alert.deadline_display || alert.deadline || "To be announced"}
+												</span>
+											</div>
+											<h3 className="text-xl font-extrabold text-slate-900">{alert.title}</h3>
+											<p className="text-sm leading-6 text-slate-700 line-clamp-3">
+												{alert.description || "Open details to read the full opportunity information and apply link."}
 											</p>
-											<h3 className="mt-2 text-lg font-bold text-slate-900">{alert.title}</h3>
-											<p className="mt-2 text-sm text-slate-600">
-												📅 <span className="font-semibold">{alert.date}</span>
-											</p>
-											{alert.description && (
-												<p className="mt-2 text-sm text-slate-700">{alert.description}</p>
-											)}
+											<div className="flex flex-wrap gap-3 pt-1">
+												<button
+													type="button"
+													onClick={() => handleViewDetails(alert)}
+													className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+												>
+													View Details
+												</button>
+												<a
+													href={alert.link || "#"}
+													target="_blank"
+													rel="noopener noreferrer"
+													className="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+												>
+													Apply on official site
+												</a>
+											</div>
 										</div>
 									</div>
 								</article>
 							);
 						})}
+					</div>
+					<div className="cc-fade-in mt-8 flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" style={{ animationDelay: "300ms" }}>
+						<button
+							type="button"
+							disabled={safePage <= 1}
+							onClick={() => goToPage(safePage - 1)}
+							className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-100"
+						>
+							← Previous
+						</button>
+						<p className="text-sm text-slate-600">
+							Page <span className="font-semibold text-slate-900">{safePage}</span> of <span className="font-semibold text-slate-900">{totalPages}</span>
+						</p>
+						<button
+							type="button"
+							disabled={safePage >= totalPages}
+							onClick={() => goToPage(safePage + 1)}
+							className="rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:from-indigo-700 hover:to-purple-700"
+						>
+							Next →
+						</button>
 					</div>
 				</div>
 			) : (
@@ -129,6 +202,8 @@ function Alerts() {
 					</div>
 				</div>
 			)}
+
+				<AlertDetailsModal isOpen={Boolean(selectedAlert)} alert={selectedAlert} onClose={() => setSelectedAlert(null)} />
 		</div>
 	);
 }

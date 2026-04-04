@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'accounts',
     'test_module',
     'prediction_module',
+    'alerts_module',
 ]
 
 
