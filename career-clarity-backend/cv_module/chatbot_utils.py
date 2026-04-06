@@ -23,6 +23,19 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "http://localhost:5173")
 OPENROUTER_APP_NAME = os.getenv("OPENROUTER_APP_NAME", "CareerClarity")
 
+FOLLOW_UP_HINTS = {
+    "india",
+    "in india",
+    "usa",
+    "uk",
+    "canada",
+    "australia",
+    "for me",
+    "for my profile",
+    "based on my profile",
+    "and in india",
+}
+
 
 
 def _normalize_value(value: Any) -> List[str]:
@@ -70,6 +83,50 @@ def is_relevant_question(message: str) -> bool:
     return True
 
 
+def resolve_followup_message(message: str, conversation_history: Optional[List[Dict[str, str]]] = None) -> str:
+    """Merge short follow-up prompts with the previous user question for continuity.
+
+    Example: previous="top 10 colleges for me" and current="in india"
+    becomes "top 10 colleges for me in india".
+    """
+    current = (message or "").strip()
+    if not current:
+        return current
+
+    normalized_current = current.lower()
+    words = normalized_current.split()
+    is_short_followup = len(words) <= 6
+    has_followup_cue = (
+        normalized_current in FOLLOW_UP_HINTS
+        or normalized_current.startswith("in ")
+        or normalized_current.startswith("for ")
+        or normalized_current.startswith("only ")
+    )
+
+    if not (is_short_followup and has_followup_cue):
+        return current
+
+    history = conversation_history or []
+    previous_user_messages = [
+        (item.get("text") or "").strip()
+        for item in history
+        if isinstance(item, dict) and (item.get("role") or "").strip().lower() == "user"
+    ]
+
+    for previous in reversed(previous_user_messages):
+        if not previous:
+            continue
+        if previous.lower() == normalized_current:
+            continue
+        if len(previous.split()) < 4:
+            continue
+
+        merged = f"{previous.rstrip('?.! ,')} {current.lstrip(',. ')}"
+        return merged.strip()
+
+    return current
+
+
 def _get_user_context(user) -> Dict[str, Any]:
     """Collect the latest user profile data used to personalize the prompt."""
     from accounts.models import Profile
@@ -81,18 +138,31 @@ def _get_user_context(user) -> Dict[str, Any]:
     latest_interest_test = TestResult.objects.filter(user=user).order_by("-created_at").first()
     latest_skill_test = SkillTestResult.objects.filter(user=user).order_by("-created_at").first()
 
+    profile_skills = _normalize_value(getattr(profile, "skills", []))
+    cv_skills = _normalize_value(getattr(cv_profile, "skills", []))
+    merged_skills = _normalize_value(profile_skills + cv_skills)
+
     return {
+        "username": user.get_username(),
+        "email": getattr(profile, "email", "") or user.email or "",
         "full_name": getattr(profile, "full_name", "") or user.get_username(),
         "education_level": getattr(profile, "education_level", "") or "Not specified",
         "interests": _normalize_value(getattr(profile, "interests", [])),
         "interest_data": _normalize_value(getattr(latest_interest_test, "interest_data", {})),
-        "skills": _normalize_value(getattr(cv_profile, "skills", [])),
+        "skills": merged_skills,
         "skill_level": getattr(latest_skill_test, "level", "") or "Not assessed yet",
         "skill_name": getattr(latest_skill_test, "skill", "") or "",
+        "quick_test_attempted": bool(latest_interest_test),
+        "skill_test_attempted": bool(latest_skill_test),
     }
 
 
-def build_prompt(user, message: str) -> str:
+def build_prompt(
+    user,
+    message: str,
+    conversation_history: Optional[List[Dict[str, str]]] = None,
+    flow_context: Optional[Dict[str, Any]] = None,
+) -> str:
     """Build a strict, concise prompt for the OpenRouter model."""
     context = _get_user_context(user)
 
@@ -105,34 +175,60 @@ def build_prompt(user, message: str) -> str:
 
     system_rules = (
         "You are a career guidance chatbot for students and job seekers. "
+        "You must preserve continuity with recent conversation history in this session. "
+        "If user asks follow-up questions, continue from prior context instead of restarting. "
+        "Align guidance with the user's app flow stage and suggest the next logical step. "
         "Only answer questions related to career, learning, skills, education, and programming. "
         "If the user asks anything unrelated, reply in 2 short lines: one refusal line and one suggestion line. "
         "Start with: 'I can only help with career and education related questions.' "
         "Use the user's profile data to personalize the guidance when the question is relevant. "
-        "Be concise, practical, and helpful. Avoid long explanations. "
-        "For relevant answers, use this format: short intro, then 2-3 bullet points, then one short closing line. "
-        "Keep total response under 80 words."
+        "Be concise, practical, and helpful. Avoid unnecessary fluff. "
+        "For relevant answers, use this format: short intro, then 3-6 bullet points, then one short closing line. "
+        "Keep answers complete and contextually consistent with the conversation history."
     )
 
     user_context = (
+        f"Username: {context['username']}\n"
+        f"Email: {context['email'] or 'Not provided'}\n"
         f"User name: {context['full_name']}\n"
         f"Education level: {context['education_level']}\n"
         f"Interests: {interest_text}\n"
         f"CV skills: {skills_text}\n"
         f"Latest skill level: {skill_level_text}\n"
+        f"Quick test attempted: {'Yes' if context['quick_test_attempted'] else 'No'}\n"
+        f"Skill test attempted: {'Yes' if context['skill_test_attempted'] else 'No'}\n"
+    )
+
+    history_lines = []
+    for item in conversation_history or []:
+        role = (item.get("role") or "").strip().lower()
+        text = (item.get("text") or "").strip()
+        if role in {"user", "bot"} and text:
+            speaker = "User" if role == "user" else "Assistant"
+            history_lines.append(f"{speaker}: {text}")
+    history_text = "\n".join(history_lines[-8:]) or "No previous chat in this session."
+
+    flow_context = flow_context or {}
+    route = flow_context.get("currentRoute") or "Unknown"
+    next_test_label = flow_context.get("nextTestLabel") or "Quick Test"
+    flow_note = (
+        f"Current app route: {route}\n"
+        f"Suggested next test label: {next_test_label}\n"
     )
 
     return (
         f"{system_rules}\n\n"
         f"User context:\n{user_context}\n"
+        f"App flow context:\n{flow_note}\n"
+        f"Session conversation history:\n{history_text}\n\n"
         f"User question: {message.strip()}\n\n"
         "If the question is unrelated, give the refusal sentence above and one short suggestion sentence only. Otherwise, answer in a clear and concise way using bullets. "
         "Keep the response short, skimmable, and easy to understand. If relevant, connect the answer to the user's interests or skills."
     )
 
 
-def format_short_reply(reply: str, max_chars: int = 320, max_lines: int = 5) -> str:
-    """Normalize model output into a small, readable response."""
+def format_short_reply(reply: str, max_chars: int = 1400, max_lines: int = 24) -> str:
+    """Normalize model output while preserving full useful response content."""
     text = (reply or "").strip()
     if not text:
         return ""
@@ -141,7 +237,7 @@ def format_short_reply(reply: str, max_chars: int = 320, max_lines: int = 5) -> 
     compact = "\n".join(lines[:max_lines])
 
     if len(compact) > max_chars:
-        compact = compact[: max_chars - 1].rstrip() + "…"
+        compact = compact[: max_chars].rstrip()
 
     return compact
 
@@ -168,7 +264,7 @@ def call_ai(prompt: str) -> Optional[str]:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.4,
-        "max_tokens": 180,
+        "max_tokens": 320,
     }
 
     try:

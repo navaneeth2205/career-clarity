@@ -3,415 +3,376 @@ import { sendChatMessage } from "../services/chatbotService";
 import { useNavigate } from "react-router-dom";
 import { uploadCV } from "../services/resumeService";
 import { getQuickTest } from "../services/testService";
+import { getCurrentUser } from "../services/authService";
 
 const initialBotMessage = {
   id: 1,
   role: "bot",
-  text: "Hi! I’m your CareerClarity assistant. Ask me about streams, degrees, skills, colleges, or career roadmaps.",
+  text: "Hi! I’m your CareerClarity assistant. Ask me about careers, skills, degrees, colleges, or your next step.",
 };
 
 function ChatWindow({ isOpen, onClose, userIdentity, initialMessage, onInitialMessageSent }) {
-  const [messages, setMessages] = useState([initialBotMessage]);
-
+  const [messages, setMessages] = useState([{ ...initialBotMessage }]);
   const [inputValue, setInputValue] = useState("");
   const [isBotTyping, setIsBotTyping] = useState(false);
   const [nextTestLabel, setNextTestLabel] = useState("Quick Test");
 
   const endRef = useRef(null);
   const inputRef = useRef(null);
-  const fileInputRef = useRef(null); // ✅ FIXED
-  const lastAutoSentMessageRef = useRef("");
+  const fileInputRef = useRef(null);
+  const sessionIdRef = useRef(`${userIdentity}-${Date.now()}`);
   const onboardingBootstrappedRef = useRef(false);
   const initialNoticeShownRef = useRef(false);
 
   const navigate = useNavigate();
 
   const resetChatState = () => {
-    setMessages([{ ...initialBotMessage }]);
-    setInputValue("");
-    setIsBotTyping(false);
-    onboardingBootstrappedRef.current = false;
-    initialNoticeShownRef.current = false;
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+  setMessages([{ ...initialBotMessage, id: Date.now() }]);
+  setInputValue("");
+  setIsBotTyping(false);
+  sessionIdRef.current = `${userIdentity}-${Date.now()}`;
+  onboardingBootstrappedRef.current = false;
+  initialNoticeShownRef.current = false;
+  if (fileInputRef.current) {
+    fileInputRef.current.value = "";
+  }
   };
 
   const handleClose = () => {
-    resetChatState();
-    onClose();
+  resetChatState();
+  onClose();
+  };
+
+  const buildConversationHistory = (extraUserMessage = "") => {
+  const serializable = messages
+    .filter((item) => ["user", "bot"].includes(item.role) && typeof item.text === "string" && item.text.trim())
+    .slice(-10)
+    .map((item) => ({ role: item.role, text: item.text.trim() }));
+
+  if (extraUserMessage.trim()) {
+    serializable.push({ role: "user", text: extraUserMessage.trim() });
+  }
+
+  return serializable.slice(-10);
+  };
+
+  const appendBotMessage = (text, actions = []) => {
+  setMessages((prev) => [
+    ...prev,
+    {
+      id: Date.now() + Math.random(),
+      role: "bot",
+      text,
+      actions,
+    },
+  ]);
   };
 
   useEffect(() => {
-    if (!isOpen) return;
-    inputRef.current?.focus();
+  if (!isOpen) return;
+  inputRef.current?.focus();
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
+  if (!isOpen) {
+    return;
+  }
 
-    let mounted = true;
+  let mounted = true;
 
-    const loadNextTestLabel = async () => {
-      try {
-        const quickTestData = await getQuickTest();
-        if (!mounted) {
-          return;
-        }
-
-        setNextTestLabel(quickTestData?.attempted ? "Skill Test" : "Quick Test");
-      } catch {
-        if (mounted) {
-          setNextTestLabel("Quick Test");
-        }
+  const loadNextTestLabel = async () => {
+    try {
+      const quickTestData = await getQuickTest();
+      if (!mounted) {
+        return;
       }
-    };
 
-    loadNextTestLabel();
+      setNextTestLabel(quickTestData?.attempted ? "Skill Test" : "Quick Test");
+    } catch {
+      if (mounted) {
+        setNextTestLabel("Quick Test");
+      }
+    }
+  };
 
-    return () => {
-      mounted = false;
-    };
+  loadNextTestLabel();
+
+  return () => {
+    mounted = false;
+  };
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !initialMessage || initialNoticeShownRef.current) {
-      return;
-    }
+  if (!isOpen || !initialMessage || initialNoticeShownRef.current) {
+    return;
+  }
 
-    initialNoticeShownRef.current = true;
+  initialNoticeShownRef.current = true;
 
-    if (initialMessage === "__UPLOAD_CV__") {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          role: "bot",
-          text: "Please upload your renewed CV now. After upload, your profile skills, recommendations, and skill-test flow will refresh with the latest skills.",
-          actions: [{ label: "Upload CV", type: "upload" }, { label: "Close Chat", type: "close" }],
-        },
-      ]);
-      onInitialMessageSent?.();
-      return;
-    }
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        role: "bot",
-        text: initialMessage.trim(),
-      },
-    ]);
+  if (initialMessage === "__UPLOAD_CV__") {
+    appendBotMessage(
+      "Please upload your renewed CV now. After upload, your skills, recommendations, and skill-test flow will refresh.",
+      [{ label: "Upload CV", type: "upload" }, { label: "Close Chat", type: "close" }]
+    );
     onInitialMessageSent?.();
+    return;
+  }
+
+  appendBotMessage(initialMessage.trim());
+  onInitialMessageSent?.();
   }, [isOpen, initialMessage, onInitialMessageSent]);
 
   useEffect(() => {
-    if (!isOpen) return;
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+	if (!isOpen) return;
+	endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isBotTyping, isOpen]);
 
   useEffect(() => {
-    resetChatState();
+	resetChatState();
   }, [userIdentity]);
 
-  const canSend = useMemo(
-    () => inputValue.trim().length > 0 && !isBotTyping,
-    [inputValue, isBotTyping]
-  );
+  const canSend = useMemo(() => inputValue.trim().length > 0 && !isBotTyping, [inputValue, isBotTyping]);
 
-  // ✅ HANDLE BUTTON ACTIONS
   const handleAction = (action) => {
     if (action.type === "upload") {
-      fileInputRef.current?.click();
-    } else if (action.type === "close") {
-      handleClose();
-    } else if (action.route) {
-      navigate(action.route);
-      handleClose();
-    }
+    fileInputRef.current?.click();
+  } else if (action.type === "close") {
+    handleClose();
+  } else if (action.route) {
+    navigate(action.route);
+    handleClose();
+  }
   };
 
-  // ✅ HANDLE FILE UPLOAD
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setIsBotTyping(true);
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        role: "bot",
-        text: "⏳ Uploading your file...",
-      },
-    ]);
+    appendBotMessage("Uploading your file...");
 
     try {
-      const res = await uploadCV(file);
-
-      const detectedSkills = Array.isArray(res.skills)
-        ? res.skills
-        : Array.isArray(res.extractedSkills)
-          ? res.extractedSkills
-          : [];
-      const uploadStatusMessage = typeof res.uploadMessage === "string" && res.uploadMessage.trim().length > 0
+    const res = await uploadCV(file);
+    const detectedSkills = Array.isArray(res.skills)
+      ? res.skills
+      : Array.isArray(res.extractedSkills)
+        ? res.extractedSkills
+        : [];
+    const uploadStatusMessage =
+      typeof res.uploadMessage === "string" && res.uploadMessage.trim().length > 0
         ? res.uploadMessage
         : "Document uploaded successfully.";
-      const isMarksCardUpload = /marks\s*card/i.test(uploadStatusMessage) || /\.(jpg|jpeg|png)$/i.test(file.name || "");
-      const documentLabel = isMarksCardUpload ? "marks card" : "CV";
-      const uploadReply =
-        detectedSkills.length > 0
-          ? `${uploadStatusMessage} I identified: ${detectedSkills.join(", ")}. Next step is to take the ${nextTestLabel.toLowerCase()}.`
-          : `${uploadStatusMessage} Upload complete. You can continue by updating profile details or taking the ${nextTestLabel.toLowerCase()}.`;
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          role: "bot",
-          text: `${uploadStatusMessage} ⏳ Processing your ${documentLabel}, few seconds to go...`,
-        },
-      ]);
+    const uploadReply =
+      detectedSkills.length > 0
+        ? `${uploadStatusMessage} I identified: ${detectedSkills.join(", ")}. Next step: take the ${nextTestLabel.toLowerCase()}.`
+        : `${uploadStatusMessage} Upload is complete. Continue by updating profile or taking the ${nextTestLabel.toLowerCase()}.`;
 
-      window.setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now() + 1,
-            role: "bot",
-            text: uploadReply,
-            actions:
-              detectedSkills.length > 0
-                ? [{ label: `Take ${nextTestLabel}`, route: "/quick-test" }, { label: "Close Chat", type: "close" }]
-                : [
-                    { label: "Update Profile", route: "/profile" },
-                    { label: `Take ${nextTestLabel}`, route: "/quick-test" },
-                    { label: "Close Chat", type: "close" },
-                  ],
-          },
-        ]);
-        setIsBotTyping(false);
-      }, 1400);
-    } catch (err) {
-      console.error(err);
-      const failureMessage = err?.message || "Upload failed. Please try again.";
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          role: "bot",
-          text: `Upload failed: ${failureMessage}`,
-          actions: [{ label: "Upload Again", type: "upload" }, { label: "Close Chat", type: "close" }],
-        },
-      ]);
-      setIsBotTyping(false);
-    }
+    appendBotMessage(uploadReply, [
+      ...(detectedSkills.length > 0 ? [] : [{ label: "Update Profile", route: "/profile" }]),
+      { label: `Take ${nextTestLabel}`, route: "/quick-test" },
+      { label: "Close Chat", type: "close" },
+    ]);
+  } catch (err) {
+    const failureMessage = err?.message || "Upload failed. Please try again.";
+    appendBotMessage(`Upload failed: ${failureMessage}`, [
+      { label: "Upload Again", type: "upload" },
+      { label: "Close Chat", type: "close" },
+    ]);
+  } finally {
+    setIsBotTyping(false);
+  }
   };
 
   const sendMessage = async (rawMessage, options = {}) => {
-    const { includeUserMessage = true } = options;
-    const userMessage = rawMessage.trim();
-    if (!userMessage || isBotTyping) return;
+  const { includeUserMessage = true } = options;
+  const userMessage = rawMessage.trim();
+  if (!userMessage || isBotTyping) return;
 
-    // show user message
-    if (includeUserMessage) {
-      setMessages((prev) => [
-        ...prev,
-        { id: Date.now(), role: "user", text: userMessage },
-      ]);
-    }
+  if (includeUserMessage) {
+    setMessages((prev) => [...prev, { id: Date.now(), role: "user", text: userMessage }]);
+  }
 
-    setIsBotTyping(true);
+  setIsBotTyping(true);
 
-    try {
-      const result = await sendChatMessage(userMessage);
-      const botReply =
-        result?.reply ||
-        result?.message ||
-        "Thanks for your query. I’ll help you with the next steps.";
+  try {
+    const currentUser = getCurrentUser() || {};
+    const displayName = currentUser?.name || currentUser?.username || userIdentity || "student";
+    const routeHint = window.location.pathname || "/dashboard";
+    const result = await sendChatMessage(userMessage, {
+      sessionId: sessionIdRef.current,
+      history: buildConversationHistory(userMessage),
+      flowContext: {
+        currentRoute: window.location.pathname,
+        nextTestLabel,
+        username: currentUser?.username || userIdentity,
+        educationLevel: currentUser?.educationLevel || "",
+      },
+    });
 
-      const sanitizedBotReply = botReply.replace(
-        /take\s+(the\s+)?ability\s+test/gi,
-        `take the ${nextTestLabel.toLowerCase()}`
-      );
-
-      const normalizedBotReply = nextTestLabel === "Skill Test"
+    const botReply =
+      result?.reply ||
+      result?.message ||
+      `I’m continuing with your context, ${displayName}. From ${routeHint}, your next best step is ${nextTestLabel.toLowerCase()} or recommendations based on your profile.`;
+    const sanitizedBotReply = botReply.replace(
+      /take\s+(the\s+)?ability\s+test/gi,
+      `take the ${nextTestLabel.toLowerCase()}`
+    );
+    const normalizedBotReply =
+      nextTestLabel === "Skill Test"
         ? sanitizedBotReply.replace(/take\s+(the\s+)?quick\s+test/gi, "take the skill test")
         : sanitizedBotReply;
 
-      const actions = Array.isArray(result?.actions)
-        ? result.actions.map((action) => {
-            const nextAction = { ...action };
-            if (
-              typeof nextAction.label === "string" &&
-              /take\s+(the\s+)?(ability|quick|skill)\s+test/i.test(nextAction.label)
-            ) {
-              nextAction.label = `Take ${nextTestLabel}`;
-              nextAction.route = "/quick-test";
-            }
-            return nextAction;
-          })
-        : [];
-      const needsUploadAction = /upload\s+your\s+cv|get\s+started/i.test(botReply);
-      if (needsUploadAction && actions.length === 0) {
-        actions.push({ label: "Upload CV", type: "upload" });
-      }
-      
-      // Always add a close button to all responses
-      actions.push({ label: "Close Chat", type: "close" });
+    const actions = Array.isArray(result?.actions)
+      ? result.actions.map((action) => {
+          const nextAction = { ...action };
+          if (
+            typeof nextAction.label === "string" &&
+            /take\s+(the\s+)?(ability|quick|skill)\s+test/i.test(nextAction.label)
+          ) {
+            nextAction.label = `Take ${nextTestLabel}`;
+            nextAction.route = "/quick-test";
+          }
+          return nextAction;
+        })
+      : [];
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          role: "bot",
-          text: normalizedBotReply,
-          actions,
-        },
-      ]);
-    } catch (err) {
-      console.error(err);
+    const needsUploadAction = /upload\s+your\s+cv|get\s+started|upload\s+marks\s*card/i.test(normalizedBotReply);
+    if (needsUploadAction && actions.length === 0) {
+      actions.push({ label: "Upload CV", type: "upload" });
     }
 
+    actions.push({ label: "Close Chat", type: "close" });
+    appendBotMessage(normalizedBotReply, actions);
+  } catch {
+    const currentUser = getCurrentUser() || {};
+    const displayName = currentUser?.name || currentUser?.username || userIdentity || "student";
+    const routeHint = window.location.pathname || "/dashboard";
+    appendBotMessage(
+      `I hit a temporary issue while processing your request, ${displayName}. From ${routeHint}, continue with ${nextTestLabel.toLowerCase()} or ask me a follow-up and I’ll use your latest chat context.`,
+      [{ label: "Close Chat", type: "close" }]
+    );
+  } finally {
     setIsBotTyping(false);
+  }
   };
 
-  // ✅ SEND MESSAGE
   const onSend = async () => {
-    const userMessage = inputValue.trim();
-    if (!userMessage || isBotTyping) return;
-    setInputValue("");
-    await sendMessage(userMessage);
+  const userMessage = inputValue.trim();
+  if (!userMessage || isBotTyping) return;
+  setInputValue("");
+  await sendMessage(userMessage);
   };
 
   useEffect(() => {
-    if (!isOpen || isBotTyping || onboardingBootstrappedRef.current) {
-      return;
-    }
+  if (!isOpen || isBotTyping || onboardingBootstrappedRef.current) {
+    return;
+  }
 
-    onboardingBootstrappedRef.current = true;
-    sendMessage("__onboarding__", { includeUserMessage: false });
-  }, [isOpen, isBotTyping, initialMessage]);
-
-  useEffect(() => {
-    if (!isOpen || !initialMessage || isBotTyping) {
-      return;
-    }
-
-    if (lastAutoSentMessageRef.current === initialMessage) {
-      return;
-    }
-
-    lastAutoSentMessageRef.current = initialMessage;
-  }, [isOpen, initialMessage, isBotTyping, onInitialMessageSent, nextTestLabel]);
+  onboardingBootstrappedRef.current = true;
+  sendMessage("__onboarding__", { includeUserMessage: false });
+  }, [isOpen, isBotTyping]);
 
   if (!isOpen) return null;
 
   return (
+  <div className="fixed inset-0 z-50 flex items-end justify-end bg-slate-900/35 p-4 backdrop-blur-[2px] sm:p-6" onClick={handleClose}>
     <div
-      className="fixed inset-0 z-50 flex items-end justify-end bg-slate-900/40 p-4 backdrop-blur-[2px] sm:p-6"
-      onClick={handleClose}
+      className="flex h-[78vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-indigo-100/80 bg-white shadow-2xl shadow-slate-900/20"
+      onClick={(event) => event.stopPropagation()}
     >
-      <div
-        className="flex h-[75vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-indigo-100 bg-white shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-indigo-100 bg-gradient-to-r from-indigo-50 to-white px-4 py-3">
-          <h2 className="text-sm font-semibold text-slate-900">
-            CareerClarity AI Chatbot
-          </h2>
-          <button onClick={handleClose}>✕</button>
+      <div className="flex items-center justify-between border-b border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-violet-50 px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">CareerClarity Assistant</h2>
+          <p className="text-xs text-slate-500">Session active • remembers this chat until you close</p>
         </div>
+        <button
+          type="button"
+          onClick={handleClose}
+          className="rounded-lg p-1.5 text-slate-500 transition hover:bg-white hover:text-slate-700"
+          aria-label="Close chatbot"
+        >
+          ✕
+        </button>
+      </div>
 
-        {/* Messages */}
-        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex flex-col ${
-                message.role === "user" ? "items-end" : "items-start"
+      <div className="flex-1 space-y-3 overflow-y-auto bg-gradient-to-b from-slate-50 to-white px-4 py-4">
+        {messages.map((message) => (
+          <div key={message.id} className={`flex flex-col ${message.role === "user" ? "items-end" : "items-start"}`}>
+            <p
+              className={`max-w-[86%] rounded-2xl px-4 py-2.5 text-sm leading-6 shadow-sm ${
+                message.role === "user"
+                  ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white"
+                  : "border border-slate-200 bg-white text-slate-700"
               }`}
             >
-              {/* Text */}
-              <p
-                className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${
-                  message.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-slate-700"
-                }`}
-              >
-                {message.text}
-              </p>
+              {message.text}
+            </p>
 
-              {/* ✅ ACTION BUTTONS */}
-              {message.actions && message.actions.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {message.actions.map((action, index) => {
-                    const isProfileAction = action.label.includes("Profile");
-                    const isCloseAction = action.type === "close";
-                    
-                    return (
-                      <button
-                        key={index}
-                        onClick={() => handleAction(action)}
-                        className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                          isProfileAction
-                            ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                            : isCloseAction
-                            ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                            : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-                        }`}
-                      >
-                        {action.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ))}
+            {message.actions && message.actions.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {message.actions.map((action, index) => {
+                  const isCloseAction = action.type === "close";
+                  return (
+                    <button
+                      key={`${action.label}-${index}`}
+                      onClick={() => handleAction(action)}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+                        isCloseAction
+                          ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                          : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                      }`}
+                    >
+                      {action.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ))}
 
-          {/* Typing */}
-          {isBotTyping && <p className="text-sm text-slate-500">⏳ Processing...</p>}
+        {isBotTyping && (
+          <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-indigo-400" />
+            <span className="h-2 w-2 animate-pulse rounded-full bg-indigo-300 [animation-delay:120ms]" />
+            <span className="h-2 w-2 animate-pulse rounded-full bg-indigo-200 [animation-delay:240ms]" />
+            Thinking...
+          </div>
+        )}
 
-          <div ref={endRef} />
-        </div>
+        <div ref={endRef} />
+      </div>
 
-        {/* Input */}
-        <div className="border-t p-3">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              onSend();
-            }}
-            className="flex gap-2"
+      <div className="border-t border-indigo-100 bg-white p-3">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSend();
+          }}
+          className="flex items-center gap-2"
+        >
+          <input
+            ref={inputRef}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            className="cc-input h-11 flex-1"
+            placeholder="Ask about careers, skills, tests, or next steps..."
+          />
+
+          <input type="file" ref={fileInputRef} accept=".pdf,.jpg,.jpeg,.png" style={{ display: "none" }} onChange={handleFileUpload} />
+
+          <button
+            type="submit"
+            disabled={!canSend}
+            className="h-11 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 text-sm font-semibold text-white transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <input
-              ref={inputRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              className="flex-1 border px-2 py-1"
-              placeholder="Ask something..."
-            />
-
-            {/* Hidden file input */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept=".pdf,.jpg,.jpeg,.png"
-              style={{ display: "none" }}
-              onChange={handleFileUpload}
-            />
-
-            <button disabled={!canSend}>Send</button>
-          </form>
-        </div>
+            Send
+          </button>
+        </form>
       </div>
     </div>
+  </div>
   );
 }
 

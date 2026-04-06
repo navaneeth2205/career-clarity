@@ -6,7 +6,7 @@ from .utils import extract_text_from_pdf, extract_text_from_image, parse_cv
 from accounts.models import Profile
 from test_module.models import TestResult, SkillTestResult
 from .chat_utils import extract_subjects, is_school_student, has_no_cv_intent, extract_high_marks_subjects
-from .chatbot_utils import is_relevant_question, build_prompt, call_ai, format_short_reply
+from .chatbot_utils import is_relevant_question, build_prompt, call_ai, format_short_reply, resolve_followup_message
 from core.api_response import success_response, error_response
 import logging
 
@@ -291,6 +291,23 @@ def chatbot_api(request):
     """Career guidance chatbot endpoint backed by OpenRouter."""
     user = request.user
     message = (request.data.get("message") or "").strip()
+    session_id = (request.data.get("sessionId") or "").strip()
+    raw_history = request.data.get("history") or []
+    raw_flow_context = request.data.get("flowContext") or {}
+
+    history = []
+    if isinstance(raw_history, list):
+        for item in raw_history[-10:]:
+            if not isinstance(item, dict):
+                continue
+            role = (item.get("role") or "").strip().lower()
+            text = (item.get("text") or "").strip()
+            if role not in {"user", "bot"} or not text:
+                continue
+            history.append({"role": role, "text": text[:500]})
+
+    flow_context = raw_flow_context if isinstance(raw_flow_context, dict) else {}
+    effective_message = resolve_followup_message(message, history)
 
     if not message:
         return error_response("Message is required.", status_code=400)
@@ -330,6 +347,8 @@ def chatbot_api(request):
     onboarding_completed = bool(profile_updated or has_uploaded_document or profile_has_skills)
     quick_test_attempted = TestResult.objects.filter(user=user).exists()
     skill_test_attempted = SkillTestResult.objects.filter(user=user).exists()
+    next_test_label = "Skill Test" if quick_test_attempted else "Quick Test"
+    next_test_phrase = next_test_label.lower()
 
     def _workflow_actions():
         actions = []
@@ -345,7 +364,7 @@ def chatbot_api(request):
                 actions.append({"label": "Update Profile", "route": "/profile"})
                 actions.append({"label": "Upload Marks Card", "type": "upload"} if school_student else {"label": "Upload CV", "type": "upload"})
             else:
-                actions.append({"label": "Take Quick Test", "route": "/quick-test"})
+                actions.append({"label": f"Take {next_test_label}", "route": "/quick-test"})
             return actions
 
         if not quick_test_attempted:
@@ -374,7 +393,7 @@ def chatbot_api(request):
             )
 
         if not profile_updated:
-            return _response("Welcome! Document is received. Continue with quick test.", workflow_actions)
+            return _response(f"Welcome! Document is received. Continue with {next_test_phrase}.", workflow_actions)
 
         if not quick_test_attempted:
             return _response("Great! Your profile is ready. Continue with the quick test.", workflow_actions)
@@ -392,18 +411,28 @@ def chatbot_api(request):
             profile.save()
 
             return _response(
-                f"Saved your subjects as skills: {', '.join(profile.skills)}. Next step: quick test.",
-                [{"label": "Take Quick Test", "route": "/quick-test"}],
+                f"Saved your subjects as skills: {', '.join(profile.skills)}. Next step: {next_test_phrase}.",
+                [{"label": f"Take {next_test_label}", "route": "/quick-test"}],
             )
 
-    if not is_relevant_question(message):
+    if not is_relevant_question(effective_message):
         return _response("I can only help with career and education related questions.", workflow_actions)
 
-    prompt = build_prompt(user, message)
+    prompt = build_prompt(
+        user,
+        effective_message,
+        conversation_history=history,
+        flow_context=flow_context,
+    )
     reply = call_ai(prompt)
 
     if not reply:
-        return _response("I’m unable to answer right now. Please try again in a moment.", workflow_actions)
+        route = flow_context.get("currentRoute") if isinstance(flow_context, dict) else ""
+        route_hint = f" on {route}" if route else ""
+        return _response(
+            f"I can still guide you without AI right now. Based on your profile{route_hint}, continue with the next action below and I’ll support each step.",
+            workflow_actions,
+        )
 
     return _response(format_short_reply(reply), workflow_actions)
 

@@ -10,9 +10,18 @@ export function openChatbot(initialMessage = "") {
 	);
 }
 
-export async function sendChatMessage(message) {
+export async function sendChatMessage(message, options = {}) {
+	const routeHint = options?.flowContext?.currentRoute ? ` on ${options.flowContext.currentRoute}` : "";
+	const userLabel = options?.flowContext?.username || "your profile";
+	const payload = {
+		message,
+		sessionId: options?.sessionId || "",
+		history: Array.isArray(options?.history) ? options.history : [],
+		flowContext: options?.flowContext && typeof options.flowContext === "object" ? options.flowContext : {},
+	};
+
 	try {
-		const response = await api.post("/chatbot/", { message });
+		const response = await api.post("/chatbot/", payload);
 		return getApiData(response);
 	} catch (error) {
 		const status = error?.response?.status;
@@ -21,7 +30,7 @@ export async function sendChatMessage(message) {
 
 		if (status === 401) {
 			return {
-				reply: "Please sign in again to use the chatbot.",
+				reply: `Your session expired for ${userLabel}. Please sign in again to continue this chat${routeHint}.`,
 			};
 		}
 
@@ -32,8 +41,7 @@ export async function sendChatMessage(message) {
 		}
 
 		return {
-			reply:
-				"I’m unable to reach the server right now. Please try again shortly, or ask about career paths, skills, or exams and I’ll still guide you.",
+			reply: `I couldn’t reach the assistant service right now${routeHint}. I can still guide ${userLabel} using your latest profile context if you ask your next career step.`,
 		};
 	}
 }
