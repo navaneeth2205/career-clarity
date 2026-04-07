@@ -8,6 +8,7 @@ import Contact from "./pages/Contact";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
+import ClassLevelSetup from "./pages/ClassLevelSetup";
 import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
 import QuickTestPage from "./pages/QuickTest";
@@ -246,6 +247,14 @@ function App() {
 					element={
 						<PrivateRoute>
 							<Dashboard />
+						</PrivateRoute>
+					}
+				/>
+				<Route
+					path="/class-setup"
+					element={
+						<PrivateRoute>
+							<ClassLevelSetup />
 						</PrivateRoute>
 					}
 				/>

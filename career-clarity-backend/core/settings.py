@@ -2,12 +2,25 @@ import os
 import secrets
 from pathlib import Path
 from datetime import timedelta
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / '.env')
+
+# Also load workspace-level .env if present (useful in local setups).
+PROJECT_ROOT_ENV = BASE_DIR.parent / '.env'
+if PROJECT_ROOT_ENV.exists():
+    load_dotenv(PROJECT_ROOT_ENV)
+
 LOG_DIR = BASE_DIR / 'logs'
 LOG_DIR.mkdir(exist_ok=True)
 
 SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(50)
+GOOGLE_CLIENT_ID = (
+    os.environ.get('GOOGLE_CLIENT_ID')
+    or os.environ.get('VITE_GOOGLE_CLIENT_ID')
+    or ''
+).strip()
 
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 

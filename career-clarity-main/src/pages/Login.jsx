@@ -1,7 +1,8 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import Loader from "../components/Loader";
-import { loginUser, saveAuthSession } from "../services/authService";
+import GoogleAuthButton from "../components/GoogleAuthButton";
+import { getPostAuthRedirectPath, loginUser, loginWithGoogle, saveAuthSession } from "../services/authService";
 
 const initialFormData = {
 	identifier: "",
@@ -13,6 +14,7 @@ function Login() {
 	const [formData, setFormData] = useState(initialFormData);
 	const [showPassword, setShowPassword] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
+	const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 	const [errorMessage, setErrorMessage] = useState("");
 	const [successMessage, setSuccessMessage] = useState("");
 
@@ -35,7 +37,7 @@ function Login() {
 			setFormData(initialFormData);
 
 			setTimeout(() => {
-				navigate("/dashboard");
+				navigate(getPostAuthRedirectPath(response));
 			}, 800);
 		} catch (error) {
 			const apiError = error.response?.data?.error || error.response?.data?.message;
@@ -43,6 +45,30 @@ function Login() {
 		} finally {
 			setIsLoading(false);
 		}
+	};
+
+	const handleGoogleCredential = async (credential) => {
+		setErrorMessage("");
+		setSuccessMessage("");
+		setIsGoogleLoading(true);
+
+		try {
+			const response = await loginWithGoogle(credential);
+			saveAuthSession(response);
+			setSuccessMessage("Google login successful. Redirecting...");
+			setTimeout(() => {
+				navigate(getPostAuthRedirectPath(response));
+			}, 400);
+		} catch (error) {
+			const apiError = error.response?.data?.error || error.response?.data?.message;
+			setErrorMessage(apiError || "Google login failed. Please try again.");
+		} finally {
+			setIsGoogleLoading(false);
+		}
+	};
+
+	const handleGoogleError = (message) => {
+		setErrorMessage(message || "Google login is currently unavailable.");
 	};
 
 	return (
@@ -153,6 +179,20 @@ function Login() {
 							{isLoading ? <Loader label="" size="sm" /> : "Sign In"}
 						</button>
 					</form>
+
+					<div className="relative">
+						<div className="absolute inset-0 flex items-center">
+							<div className="w-full border-t border-slate-200"></div>
+						</div>
+						<div className="relative flex justify-center text-sm">
+							<span className="bg-white px-2 text-slate-600">Or continue with</span>
+						</div>
+					</div>
+
+					<div className="space-y-3">
+						<GoogleAuthButton onCredential={handleGoogleCredential} onError={handleGoogleError} mode="signin" />
+						{isGoogleLoading && <p className="text-center text-xs font-medium text-slate-500">Completing Google sign-in...</p>}
+					</div>
 
 					<div className="relative">
 						<div className="absolute inset-0 flex items-center">

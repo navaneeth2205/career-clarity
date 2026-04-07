@@ -47,6 +47,37 @@ export async function loginUser(payload) {
 	return getApiData(response);
 }
 
+export async function loginWithGoogle(credential) {
+	let payload = {};
+	if (typeof credential === "string") {
+		payload = { credential };
+	} else if (credential && typeof credential === "object") {
+		payload = {
+			credential: credential.credential,
+			accessToken: credential.accessToken,
+		};
+	}
+	const response = await api.post("/auth/google/", payload);
+	return getApiData(response);
+}
+
+export async function getGoogleAuthConfig() {
+	const response = await api.get("/auth/google-config/");
+	return getApiData(response);
+}
+
+export function getPostAuthRedirectPath(authData) {
+	const educationLevel = String(authData?.user?.educationLevel || "").trim();
+	if (!educationLevel) {
+		return "/class-setup";
+	}
+
+	if (authData?.requiresProfileCompletion) {
+		return "/profile";
+	}
+	return "/dashboard";
+}
+
 export function saveAuthSession(data) {
 	if (data?.token) {
 		localStorage.setItem("authToken", data.token);

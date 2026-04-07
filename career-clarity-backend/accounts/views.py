@@ -2,6 +2,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.conf import settings
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -10,6 +11,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from datetime import datetime, timezone
 import logging
 import re
+import requests
 from core.api_response import success_response, error_response
 
 from .models import Profile, TokenBlacklist, UserPreference
@@ -60,6 +62,27 @@ def _serialize_profile(profile):
         "preferredLocation": profile.preferred_location,
         "careerGoal": profile.career_goal,
     }
+
+
+def _is_profile_complete(profile):
+    has_name = bool(profile.full_name and profile.full_name.strip() and profile.full_name != profile.user.username)
+    has_education = bool((profile.education_level or "").strip())
+    has_interests = bool(isinstance(profile.interests, list) and len(profile.interests) > 0)
+    return has_name and has_education and has_interests
+
+
+def _generate_unique_username(base_value):
+    base = re.sub(r"[^a-zA-Z0-9_]", "", (base_value or "googleuser")).strip().lower()[:20]
+    if not base:
+        base = "googleuser"
+
+    candidate = base
+    counter = 1
+    while User.objects.filter(username=candidate).exists():
+        suffix = str(counter)
+        candidate = f"{base[: max(1, 20 - len(suffix))]}{suffix}"
+        counter += 1
+    return candidate
 
 
 @api_view(["POST"])
@@ -168,7 +191,170 @@ def login(request):
                 "username": user.username,
                 **_serialize_profile(profile),
             },
+            "requiresProfileCompletion": not _is_profile_complete(profile),
+            "isNewUser": False,
         }
+    )
+
+
+@api_view(["GET"])
+def google_auth_config(request):
+    return success_response(
+        data={
+            "googleClientId": settings.GOOGLE_CLIENT_ID,
+            "configured": bool(settings.GOOGLE_CLIENT_ID),
+        }
+    )
+
+
+@api_view(["POST"])
+def google_auth(request):
+    credential = (request.data.get("credential") or request.data.get("idToken") or "").strip()
+    access_token = (request.data.get("accessToken") or request.data.get("access_token") or "").strip()
+    if not credential and not access_token:
+        return error_response("Google credential is required", status_code=status.HTTP_400_BAD_REQUEST)
+
+    if not settings.GOOGLE_CLIENT_ID:
+        logger.error("Google login failed: GOOGLE_CLIENT_ID is not configured")
+        return error_response("Google login is not configured", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    id_info = None
+
+    if access_token:
+        try:
+            token_info_response = requests.get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"access_token": access_token},
+                timeout=8,
+            )
+            token_info_response.raise_for_status()
+            token_info = token_info_response.json() or {}
+
+            token_audience = (token_info.get("aud") or token_info.get("azp") or "").strip()
+            if token_audience != settings.GOOGLE_CLIENT_ID:
+                return error_response(
+                    "Google token audience mismatch. Ensure frontend and backend use the same Google client ID.",
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                )
+
+            email = (token_info.get("email") or "").strip().lower()
+            id_info = {
+                "iss": "https://accounts.google.com",
+                "email": email,
+                "email_verified": str(token_info.get("email_verified", "")).lower() in {"true", "1"},
+                "name": token_info.get("name") or "",
+                "given_name": token_info.get("given_name") or "",
+            }
+
+            if not id_info["name"]:
+                try:
+                    userinfo_response = requests.get(
+                        "https://www.googleapis.com/oauth2/v3/userinfo",
+                        headers={"Authorization": f"Bearer {access_token}"},
+                        timeout=8,
+                    )
+                    if userinfo_response.ok:
+                        userinfo = userinfo_response.json() or {}
+                        id_info["name"] = (userinfo.get("name") or "").strip()
+                        id_info["given_name"] = (userinfo.get("given_name") or "").strip()
+                        if not id_info["email"]:
+                            id_info["email"] = (userinfo.get("email") or "").strip().lower()
+                        if userinfo.get("email_verified") is True:
+                            id_info["email_verified"] = True
+                except Exception:
+                    logger.warning("Google userinfo fetch failed", exc_info=True)
+        except Exception:
+            logger.warning("Google login failed: invalid access token", exc_info=True)
+            return error_response("Invalid Google token", status_code=status.HTTP_401_UNAUTHORIZED)
+    else:
+        try:
+            token_info_response = requests.get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"id_token": credential},
+                timeout=8,
+            )
+            token_info_response.raise_for_status()
+            token_info = token_info_response.json() or {}
+            token_audience = (token_info.get("aud") or "").strip()
+            if token_audience != settings.GOOGLE_CLIENT_ID:
+                return error_response(
+                    "Google token audience mismatch. Ensure frontend and backend use the same Google client ID.",
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                )
+
+            id_info = {
+                "iss": token_info.get("iss") or "https://accounts.google.com",
+                "email": (token_info.get("email") or "").strip().lower(),
+                "email_verified": str(token_info.get("email_verified", "")).lower() in {"true", "1"},
+                "name": (token_info.get("name") or "").strip(),
+                "given_name": (token_info.get("given_name") or "").strip(),
+            }
+        except Exception:
+            logger.warning("Google login failed: invalid ID token", exc_info=True)
+            return error_response("Invalid Google token", status_code=status.HTTP_401_UNAUTHORIZED)
+
+    issuer = id_info.get("iss", "")
+    if issuer not in {"accounts.google.com", "https://accounts.google.com"}:
+        return error_response("Invalid token issuer", status_code=status.HTTP_401_UNAUTHORIZED)
+
+    email = (id_info.get("email") or "").strip().lower()
+    if not email:
+        return error_response("Google account email not available", status_code=status.HTTP_400_BAD_REQUEST)
+
+    if id_info.get("email_verified") is not True:
+        return error_response("Google account email is not verified", status_code=status.HTTP_400_BAD_REQUEST)
+
+    display_name = (id_info.get("name") or id_info.get("given_name") or email.split("@")[0]).strip()
+    user = User.objects.filter(email__iexact=email).first()
+    is_new_user = False
+
+    if user is None:
+        username = _generate_unique_username(email.split("@")[0])
+        user = User.objects.create_user(username=username, email=email)
+        user.set_unusable_password()
+        user.save(update_fields=["password"])
+        is_new_user = True
+
+    if not (user.email or "").strip():
+        user.email = email
+        user.save(update_fields=["email"])
+
+    profile, _ = Profile.objects.get_or_create(
+        user=user,
+        defaults={
+            "full_name": display_name or user.username,
+            "email": email,
+            "education_level": "",
+            "interests": [],
+        },
+    )
+
+    profile_changed = False
+    if not (profile.full_name or "").strip() and display_name:
+        profile.full_name = display_name
+        profile_changed = True
+    if not (profile.email or "").strip():
+        profile.email = email
+        profile_changed = True
+    if profile.education_level is None:
+        profile.education_level = ""
+        profile_changed = True
+    if profile_changed:
+        profile.save()
+
+    refresh = RefreshToken.for_user(user)
+    return success_response(
+        data={
+            "token": str(refresh.access_token),
+            "refreshToken": str(refresh),
+            "user": {
+                "username": user.username,
+                **_serialize_profile(profile),
+            },
+            "requiresProfileCompletion": not _is_profile_complete(profile),
+            "isNewUser": is_new_user,
+        },
+        message="Google login successful",
     )
 
 
