@@ -3,18 +3,21 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.conf import settings
+from django.core.mail import send_mail
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from django.utils import timezone as django_timezone
 import logging
 import re
 import requests
+import secrets
 from core.api_response import success_response, error_response
 
-from .models import Profile, TokenBlacklist, UserPreference
+from .models import Profile, TokenBlacklist, UserPreference, EmailOTP
 
 
 logger = logging.getLogger(__name__)
@@ -85,6 +88,64 @@ def _generate_unique_username(base_value):
     return candidate
 
 
+def _generate_otp_code():
+    return f"{secrets.randbelow(1000000):06d}"
+
+
+def _send_otp_email(email, purpose, otp_code):
+    purpose_label = "Email verification" if purpose == EmailOTP.PURPOSE_REGISTER else "Password change verification"
+    subject = f"CareerClarity {purpose_label} OTP"
+    message = (
+        f"Your CareerClarity OTP is {otp_code}.\n\n"
+        f"This code is valid for 10 minutes.\n"
+        f"If you did not request this, ignore this email."
+    )
+    send_mail(
+        subject=subject,
+        message=message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[email],
+        fail_silently=False,
+    )
+
+
+def _store_otp(email, purpose, user=None, payload=None):
+    otp_code = _generate_otp_code()
+    EmailOTP.objects.filter(email__iexact=email, purpose=purpose, verified=False).delete()
+    record = EmailOTP.objects.create(
+        user=user,
+        email=email,
+        purpose=purpose,
+        otp_code=otp_code,
+        expires_at=django_timezone.now() + timedelta(minutes=10),
+        payload=payload or {},
+    )
+    _send_otp_email(email, purpose, otp_code)
+    return record
+
+
+def _consume_otp(email, purpose, otp_code):
+    record = (
+        EmailOTP.objects.filter(
+            email__iexact=email,
+            purpose=purpose,
+            otp_code=str(otp_code).strip(),
+            verified=False,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if not record:
+        return None, "Invalid OTP"
+
+    if record.expires_at < django_timezone.now():
+        return None, "OTP expired"
+
+    record.verified = True
+    record.save(update_fields=["verified"])
+    return record, ""
+
+
 @api_view(["POST"])
 def register(request):
     email = (request.data.get("email") or "").strip().lower()
@@ -112,25 +173,54 @@ def register(request):
         logger.warning("Registration failed due to password mismatch for email=%s", email)
         return error_response("Password and confirm password do not match", status_code=status.HTTP_400_BAD_REQUEST)
 
-    if User.objects.filter(username=username).exists():
+    existing_active_user = User.objects.filter(email__iexact=email, is_active=True).first()
+    if existing_active_user:
+        logger.warning("Registration failed because email already exists and is active: email=%s", email)
+        return error_response("User already exists", status_code=status.HTTP_400_BAD_REQUEST)
+
+    verified_registration_otp = (
+        EmailOTP.objects.filter(
+            email__iexact=email,
+            purpose=EmailOTP.PURPOSE_REGISTER,
+            verified=True,
+            expires_at__gte=django_timezone.now(),
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if not verified_registration_otp:
+        return error_response("Please verify your email before signing up.", status_code=status.HTTP_400_BAD_REQUEST)
+
+    if User.objects.filter(username=username).exclude(email__iexact=email).exists():
         logger.warning("Registration failed because user already exists: username=%s", username)
         return error_response("User already exists", status_code=status.HTTP_400_BAD_REQUEST)
 
-    if User.objects.filter(email__iexact=email).exists():
-        logger.warning("Registration failed because email already exists: email=%s", email)
-        return error_response("User already exists", status_code=status.HTTP_400_BAD_REQUEST)
+    user = User.objects.filter(email__iexact=email).first()
+    if user is None:
+        user = User.objects.create_user(username=username, password=password, email=email, is_active=True)
+    else:
+        user.username = username
+        user.email = email
+        user.is_active = True
+        user.set_password(password)
+        user.save(update_fields=["username", "email", "is_active", "password"])
 
-    user = User.objects.create_user(username=username, password=password, email=email)
-
-    profile = Profile.objects.create(
+    profile, _ = Profile.objects.get_or_create(
         user=user,
-        full_name=name or username,
-        email=email,
-        education_level=education_level,
+        defaults={
+            "full_name": name or username,
+            "email": email,
+            "education_level": education_level,
+        },
     )
+    profile.full_name = name or profile.full_name or username
+    profile.email = email
+    profile.education_level = education_level
+    profile.save()
+
+    EmailOTP.objects.filter(email__iexact=email, purpose=EmailOTP.PURPOSE_REGISTER).delete()
 
     refresh = RefreshToken.for_user(user)
-    logger.info("Registration successful for user_id=%s username=%s", user.id, user.username)
 
     return success_response(
         data={
@@ -140,9 +230,52 @@ def register(request):
                 "username": user.username,
                 **_serialize_profile(profile),
             },
+            "requiresEmailVerification": False,
+            "requiresProfileCompletion": not _is_profile_complete(profile),
+            "isNewUser": True,
         },
         message="User created successfully",
         status_code=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["POST"])
+def send_registration_otp(request):
+    email = (request.data.get("email") or "").strip().lower()
+    if not email:
+        return error_response("Email is required", status_code=status.HTTP_400_BAD_REQUEST)
+
+    if not _is_valid_email(email):
+        return error_response("Please enter a valid email address", status_code=status.HTTP_400_BAD_REQUEST)
+
+    if User.objects.filter(email__iexact=email, is_active=True).exists():
+        return error_response("User already exists", status_code=status.HTTP_400_BAD_REQUEST)
+
+    _store_otp(email=email, purpose=EmailOTP.PURPOSE_REGISTER)
+    return success_response(
+        data={"email": email, "otpSent": True},
+        message="OTP sent to your email.",
+    )
+
+
+@api_view(["POST"])
+def verify_registration_otp(request):
+    email = (request.data.get("email") or "").strip().lower()
+    otp = (request.data.get("otp") or request.data.get("code") or "").strip()
+
+    if not email or not otp:
+        return error_response("Email and OTP are required", status_code=status.HTTP_400_BAD_REQUEST)
+
+    if not _is_valid_email(email):
+        return error_response("Please enter a valid email address", status_code=status.HTTP_400_BAD_REQUEST)
+
+    record, otp_error = _consume_otp(email, EmailOTP.PURPOSE_REGISTER, otp)
+    if not record:
+        return error_response(otp_error, status_code=status.HTTP_400_BAD_REQUEST)
+
+    return success_response(
+        data={"email": email, "verified": True},
+        message="Email verified successfully.",
     )
 
 
@@ -164,6 +297,9 @@ def login(request):
     if account is None:
         logger.warning("Login failed because account not found: identifier=%s", identifier)
         return error_response("Invalid credentials", status_code=status.HTTP_401_UNAUTHORIZED)
+
+    if not account.is_active:
+        return error_response("Please verify your email before logging in.", status_code=status.HTTP_401_UNAUTHORIZED)
 
     user = authenticate(username=account.username, password=password)
 
@@ -473,6 +609,7 @@ def preferences_api(request):
 def change_password_api(request):
     current_password = request.data.get("current_password")
     new_password = request.data.get("new_password")
+    otp = (request.data.get("otp") or request.data.get("code") or "").strip()
 
     if not current_password or not new_password:
         return error_response("Current and new password are required.", status_code=status.HTTP_400_BAD_REQUEST)
@@ -483,6 +620,29 @@ def change_password_api(request):
     user = request.user
     if not user.check_password(current_password):
         return error_response("Current password is incorrect.", status_code=status.HTTP_400_BAD_REQUEST)
+
+    email = (user.email or "").strip().lower()
+    if not email:
+        return error_response("No email found for this account.", status_code=status.HTTP_400_BAD_REQUEST)
+
+    if not otp:
+        _store_otp(
+            email=email,
+            purpose=EmailOTP.PURPOSE_PASSWORD_CHANGE,
+            user=user,
+            payload={"requested_by": user.username},
+        )
+        return success_response(
+            data={
+                "requiresOtp": True,
+                "email": email,
+            },
+            message="OTP sent to your email. Enter it to confirm password change.",
+        )
+
+    otp_record, otp_error = _consume_otp(email, EmailOTP.PURPOSE_PASSWORD_CHANGE, otp)
+    if not otp_record:
+        return error_response(otp_error, status_code=status.HTTP_400_BAD_REQUEST)
 
     user.set_password(new_password)
     user.save(update_fields=["password"])

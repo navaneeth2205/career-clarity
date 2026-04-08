@@ -28,8 +28,8 @@ export const updatePreferences = async (preferences) => {
   return getApiData(res);
 };
 
-export const changePassword = async ({ current_password, new_password }) => {
-  const res = await api.post("/change-password/", { current_password, new_password });
+export const changePassword = async ({ current_password, new_password, otp }) => {
+  const res = await api.post("/change-password/", { current_password, new_password, otp });
   return getApiData(res);
 };
 

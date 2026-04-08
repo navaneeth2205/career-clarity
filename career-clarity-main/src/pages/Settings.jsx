@@ -44,6 +44,9 @@ function Settings() {
 		newPassword: "",
 		confirmPassword: "",
 	});
+	const [sendingPasswordOtp, setSendingPasswordOtp] = useState(false);
+	const [passwordOtpStep, setPasswordOtpStep] = useState(false);
+	const [passwordOtp, setPasswordOtp] = useState("");
 
 	const [savingProfile, setSavingProfile] = useState(false);
 	const [savingPreferences, setSavingPreferences] = useState(false);
@@ -140,13 +143,30 @@ function Settings() {
 			return;
 		}
 
+		if (passwordOtpStep && !passwordOtp.trim()) {
+			playErrorSound();
+			setSecurityMessage({ type: "error", text: "Please enter the OTP sent to your email." });
+			return;
+		}
+
 		setChangingPassword(true);
 		try {
 			await changePassword({
 				current_password: passwordForm.currentPassword,
 				new_password: passwordForm.newPassword,
+				otp: passwordOtpStep ? passwordOtp : undefined,
 			});
+
+			if (!passwordOtpStep) {
+				setPasswordOtpStep(true);
+				playSuccessSound();
+				setSecurityMessage({ type: "success", text: "OTP sent to your email. Enter it to confirm password change." });
+				return;
+			}
+
 			setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+			setPasswordOtp("");
+			setPasswordOtpStep(false);
 			playSuccessSound();
 			setSecurityMessage({ type: "success", text: "Password changed successfully." });
 		} catch (error) {
@@ -155,6 +175,31 @@ function Settings() {
 			setSecurityMessage({ type: "error", text: backendError || "Unable to change password." });
 		} finally {
 			setChangingPassword(false);
+		}
+	};
+
+	const handleResendPasswordOtp = async () => {
+		setSecurityMessage({ type: "", text: "" });
+		if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+			playErrorSound();
+			setSecurityMessage({ type: "error", text: "Please fill password fields before requesting OTP." });
+			return;
+		}
+
+		setSendingPasswordOtp(true);
+		try {
+			await changePassword({
+				current_password: passwordForm.currentPassword,
+				new_password: passwordForm.newPassword,
+			});
+			playSuccessSound();
+			setSecurityMessage({ type: "success", text: "A new OTP has been sent to your email." });
+		} catch (error) {
+			const backendError = error?.response?.data?.error || error?.response?.data?.message;
+			playErrorSound();
+			setSecurityMessage({ type: "error", text: backendError || "Unable to resend OTP." });
+		} finally {
+			setSendingPasswordOtp(false);
 		}
 	};
 
@@ -379,12 +424,32 @@ function Settings() {
 						value={passwordForm.confirmPassword}
 						onChange={(event) => setPasswordForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
 					/>
+					{passwordOtpStep && (
+						<>
+							<input
+								type="text"
+								placeholder="Enter 6-digit OTP"
+								className="cc-input text-center tracking-[0.3em]"
+								value={passwordOtp}
+								onChange={(event) => setPasswordOtp(event.target.value)}
+								maxLength={6}
+							/>
+							<button
+								type="button"
+								onClick={handleResendPasswordOtp}
+								disabled={sendingPasswordOtp || changingPassword}
+								className="rounded-lg border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+							>
+								{sendingPasswordOtp ? "Sending OTP..." : "Resend OTP"}
+							</button>
+						</>
+					)}
 					<button
 						type="submit"
-						disabled={changingPassword}
+						disabled={changingPassword || sendingPasswordOtp}
 						className="rounded-lg bg-indigo-600 px-5 py-2 font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
 					>
-						{changingPassword ? "Updating..." : "Change Password"}
+						{changingPassword ? "Updating..." : passwordOtpStep ? "Verify OTP & Change" : "Send OTP"}
 					</button>
 				</form>
 				{securityMessage.text && <p className={`mt-3 rounded-lg border px-3 py-2 text-sm ${messageClass(securityMessage)}`}>{securityMessage.text}</p>}

@@ -47,3 +47,33 @@ class TokenBlacklist(models.Model):
         indexes = [
             models.Index(fields=['expires_at']),
         ]
+
+
+class EmailOTP(models.Model):
+    PURPOSE_REGISTER = "register"
+    PURPOSE_PASSWORD_CHANGE = "password_change"
+
+    PURPOSE_CHOICES = [
+        (PURPOSE_REGISTER, "Register"),
+        (PURPOSE_PASSWORD_CHANGE, "Password Change"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    email = models.EmailField()
+    purpose = models.CharField(max_length=40, choices=PURPOSE_CHOICES)
+    otp_code = models.CharField(max_length=6)
+    expires_at = models.DateTimeField()
+    verified = models.BooleanField(default=False)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["email", "purpose"]),
+            models.Index(fields=["expires_at"]),
+            models.Index(fields=["verified"]),
+        ]
+
+    def __str__(self):
+        return f"OTP<{self.purpose}> {self.email}"

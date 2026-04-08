@@ -38,6 +38,16 @@ export async function registerUser(payload) {
 	return getApiData(response);
 }
 
+export async function sendRegistrationOtp(email) {
+	const response = await api.post("/auth/register/send-otp/", { email });
+	return getApiData(response);
+}
+
+export async function verifyRegistrationOtp(email, otp) {
+	const response = await api.post("/auth/register/verify-otp/", { email, otp });
+	return getApiData(response);
+}
+
 export async function loginUser(payload) {
 	const normalizedPayload = {
 		password: payload?.password,

@@ -1,6 +1,8 @@
 from django.urls import path
 from .views import (
     register,
+    send_registration_otp,
+    verify_registration_otp,
     login,
     google_auth,
     google_auth_config,
@@ -14,6 +16,8 @@ from .views import (
 
 urlpatterns = [
     path('register/', register),
+    path('register/send-otp/', send_registration_otp),
+    path('register/verify-otp/', verify_registration_otp),
     path('login/', login),
     path('google-config/', google_auth_config),
     path('google/', google_auth),

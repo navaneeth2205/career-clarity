@@ -2,7 +2,15 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import Loader from "../components/Loader";
 import GoogleAuthButton from "../components/GoogleAuthButton";
-import { EDUCATION_LEVELS, getPostAuthRedirectPath, loginWithGoogle, registerUser, saveAuthSession } from "../services/authService";
+import {
+	EDUCATION_LEVELS,
+	getPostAuthRedirectPath,
+	loginWithGoogle,
+	registerUser,
+	saveAuthSession,
+	sendRegistrationOtp,
+	verifyRegistrationOtp,
+} from "../services/authService";
 
 const initialFormData = {
 	name: "",
@@ -57,19 +65,35 @@ function Register() {
 	const [showPassword, setShowPassword] = useState(false);
 	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
+	const [isSendingOtp, setIsSendingOtp] = useState(false);
+	const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+	const [isResendingOtp, setIsResendingOtp] = useState(false);
 	const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+	const [verificationStep, setVerificationStep] = useState(false);
+	const [isEmailVerified, setIsEmailVerified] = useState(false);
+	const [otp, setOtp] = useState("");
 	const [errorMessage, setErrorMessage] = useState("");
 	const [successMessage, setSuccessMessage] = useState("");
 
 	const onChange = (event) => {
 		const { name, value } = event.target;
 		setFormData((prev) => ({ ...prev, [name]: value }));
+		if (name === "email") {
+			setVerificationStep(false);
+			setIsEmailVerified(false);
+			setOtp("");
+		}
 	};
 
 	const onSubmit = async (event) => {
 		event.preventDefault();
 		setErrorMessage("");
 		setSuccessMessage("");
+
+		if (!isEmailVerified) {
+			setErrorMessage("Please verify your email with OTP before signing up.");
+			return;
+		}
 
 		const validationError = validateRegisterForm(formData);
 		if (validationError) {
@@ -81,9 +105,13 @@ function Register() {
 
 		try {
 			const response = await registerUser(formData);
+
 			saveAuthSession(response);
-			setSuccessMessage("Registration successful. Redirecting to dashboard...");
+			setSuccessMessage("Registration successful. Redirecting...");
 			setFormData(initialFormData);
+			setOtp("");
+			setVerificationStep(false);
+			setIsEmailVerified(false);
 
 			setTimeout(() => {
 				navigate(getPostAuthRedirectPath(response));
@@ -93,6 +121,69 @@ function Register() {
 			setErrorMessage(apiError || "Unable to register. Please try again.");
 		} finally {
 			setIsLoading(false);
+		}
+	};
+
+	const handleSendOtp = async () => {
+		setErrorMessage("");
+		setSuccessMessage("");
+
+		const email = (formData.email || "").trim();
+		if (!EMAIL_REGEX.test(email)) {
+			setErrorMessage("Please enter a valid email address.");
+			return;
+		}
+
+		setIsSendingOtp(true);
+		try {
+			await sendRegistrationOtp(email);
+			setVerificationStep(true);
+			setIsEmailVerified(false);
+			setSuccessMessage(`OTP sent to ${email}. Enter OTP and click Verify OTP.`);
+		} catch (error) {
+			const apiError = error.response?.data?.error || error.response?.data?.message;
+			setErrorMessage(apiError || "Unable to send OTP. Please try again.");
+		} finally {
+			setIsSendingOtp(false);
+		}
+	};
+
+	const handleVerifyOtp = async () => {
+		setErrorMessage("");
+		setSuccessMessage("");
+
+		if (!otp.trim()) {
+			setErrorMessage("Please enter the OTP sent to your email.");
+			return;
+		}
+
+		setIsVerifyingOtp(true);
+		try {
+			await verifyRegistrationOtp((formData.email || "").trim(), otp);
+			setIsEmailVerified(true);
+			setSuccessMessage("Email verified successfully. You can now sign up.");
+		} catch (error) {
+			const apiError = error.response?.data?.error || error.response?.data?.message;
+			setErrorMessage(apiError || "Invalid OTP. Please try again.");
+		} finally {
+			setIsVerifyingOtp(false);
+		}
+	};
+
+	const handleResendOtp = async () => {
+		setErrorMessage("");
+		setSuccessMessage("");
+		setIsResendingOtp(true);
+		try {
+			await sendRegistrationOtp((formData.email || "").trim());
+			setVerificationStep(true);
+			setIsEmailVerified(false);
+			setSuccessMessage(`A new OTP has been sent to ${formData.email}.`);
+		} catch (error) {
+			const apiError = error.response?.data?.error || error.response?.data?.message;
+			setErrorMessage(apiError || "Unable to resend OTP. Please try again.");
+		} finally {
+			setIsResendingOtp(false);
 		}
 	};
 
@@ -188,7 +279,19 @@ function Register() {
 								required
 								placeholder="your@email.com"
 								className="cc-input"
+								disabled={isEmailVerified}
 							/>
+							<div className="mt-2 flex items-center gap-2">
+								<button
+									type="button"
+									onClick={handleSendOtp}
+									disabled={isSendingOtp || isEmailVerified}
+									className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+								>
+									{isSendingOtp ? "Sending OTP..." : isEmailVerified ? "Email Verified" : "Verify Email"}
+								</button>
+								{isEmailVerified && <span className="text-xs font-semibold text-emerald-600">Verified ✓</span>}
+							</div>
 						</div>
 
 						<div>
@@ -266,6 +369,43 @@ function Register() {
 							</select>
 						</div>
 
+						{verificationStep && !isEmailVerified && (
+							<div>
+								<label htmlFor="otp" className="mb-2 block text-sm font-semibold text-slate-700">
+									📩 Email OTP
+								</label>
+								<input
+									id="otp"
+									name="otp"
+									type="text"
+									value={otp}
+									onChange={(event) => setOtp(event.target.value)}
+									placeholder="Enter 6-digit OTP"
+									className="cc-input tracking-[0.3em] text-center"
+									maxLength={6}
+								/>
+								<div className="mt-2 flex items-center gap-2">
+									<button
+										type="button"
+										onClick={handleVerifyOtp}
+										disabled={isVerifyingOtp}
+										className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+									>
+										{isVerifyingOtp ? "Verifying..." : "Verify OTP"}
+									</button>
+									<button
+										type="button"
+										onClick={handleResendOtp}
+										disabled={isResendingOtp}
+										className="cc-btn-secondary"
+									>
+										{isResendingOtp ? "Resending OTP..." : "Resend OTP"}
+									</button>
+								</div>
+								<p className="mt-1 text-xs text-slate-500">Enter OTP and click Verify OTP before signing up.</p>
+							</div>
+						)}
+
 						{errorMessage && (
 							<div className="cc-fade-in rounded-lg border border-red-200 bg-red-50/80 px-4 py-3 text-sm font-medium text-red-700 shadow-sm">
 								⚠️ {errorMessage}
@@ -279,11 +419,12 @@ function Register() {
 
 						<button
 							type="submit"
-							disabled={isLoading}
+							disabled={isLoading || !isEmailVerified}
 							className="cc-cta w-full flex items-center justify-center py-3 shadow-lg"
 						>
-							{isLoading ? <Loader label="" size="sm" /> : "Get Started"}
+							{isLoading ? <Loader label="" size="sm" /> : "Sign Up"}
 						</button>
+						{!isEmailVerified && <p className="text-center text-xs text-slate-500">Verify your email to enable Sign Up.</p>}
 					</form>
 
 					<div className="relative">
