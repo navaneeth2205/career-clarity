@@ -1,4 +1,5 @@
 import api, { getApiData } from "./api";
+import { setDarkModeEnabled } from "../utils/theme";
 
 export const EDUCATION_LEVELS = ["Class 10", "Class 12", "Undergraduate", "Graduate"];
 
@@ -103,6 +104,7 @@ export function saveAuthSession(data) {
 }
 
 export function clearAuthSession() {
+	setDarkModeEnabled(false);
 	localStorage.removeItem("authToken");
 	localStorage.removeItem("refreshToken");
 	localStorage.removeItem("currentUser");

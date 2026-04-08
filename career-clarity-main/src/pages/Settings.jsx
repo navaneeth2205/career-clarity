@@ -19,6 +19,7 @@ import {
 	playErrorSound,
 } from "../utils/sound";
 import { getAutoScrollEnabled, setAutoScrollEnabled } from "../utils/autoScroll";
+import { isDarkModeEnabled, setDarkModeEnabled } from "../utils/theme";
 
 function Settings() {
 	const navigate = useNavigate();
@@ -38,6 +39,7 @@ function Settings() {
 	});
 	const [soundEnabled, setSoundEnabledState] = useState(getSoundEnabled());
 	const [autoScrollEnabled, setAutoScrollEnabledState] = useState(getAutoScrollEnabled());
+	const [darkModeEnabled, setDarkModeEnabledState] = useState(isDarkModeEnabled());
 
 	const [passwordForm, setPasswordForm] = useState({
 		currentPassword: "",
@@ -260,6 +262,14 @@ function Settings() {
 		}
 	};
 
+	const handleToggleDarkMode = (enabled) => {
+		const value = setDarkModeEnabled(enabled);
+		setDarkModeEnabledState(value);
+		if (soundEnabled) {
+			playClickSound();
+		}
+	};
+
 	const messageClass = (status) =>
 		status?.type === "success"
 			? "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -394,6 +404,24 @@ function Settings() {
 							type="checkbox"
 							checked={autoScrollEnabled}
 							onChange={(event) => handleToggleAutoScroll(event.target.checked)}
+							className="h-4 w-4 accent-indigo-600"
+						/>
+					</label>
+				</div>
+			</section>
+
+			<section className="cc-fade-in rounded-2xl bg-white p-6 shadow-md ring-1 ring-slate-200" style={{ animationDelay: "220ms" }}>
+				<h2 className="text-xl font-bold text-slate-900">🌙 Appearance</h2>
+				<div className="mt-4">
+					<label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 p-3">
+						<div>
+							<p className="text-sm font-semibold text-slate-800">Enable Premium Dark Mode</p>
+							<p className="text-xs text-slate-500">Applies a global premium dark theme across all pages</p>
+						</div>
+						<input
+							type="checkbox"
+							checked={darkModeEnabled}
+							onChange={(event) => handleToggleDarkMode(event.target.checked)}
 							className="h-4 w-4 accent-indigo-600"
 						/>
 					</label>
