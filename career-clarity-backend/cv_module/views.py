@@ -1,17 +1,12 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from .models import CVProfile
-from .utils import extract_text_from_pdf, extract_text_from_image, parse_cv, analyze_resume_text
+from .utils import extract_text_from_pdf, extract_text_from_image, parse_cv
 from accounts.models import Profile
-from test_module.models import TestResult, SkillTestResult
+from test_module.models import TestResult
 from .chat_utils import extract_subjects, is_school_student, has_no_cv_intent, extract_high_marks_subjects
-from .chatbot_utils import is_relevant_question, build_prompt, call_ai, format_short_reply, resolve_followup_message
-from core.api_response import success_response, error_response
-import logging
-
-
-logger = logging.getLogger(__name__)
 
 
 @api_view(['GET'])
@@ -25,13 +20,11 @@ def get_profile_completion_status(request):
     try:
         profile = Profile.objects.get(user=user)
     except Profile.DoesNotExist:
-        return success_response(
-            data={
-                "is_complete": False,
-                "missing_fields": ["name", "interests"],
-            },
-            message="Please complete your profile to proceed.",
-        )
+        return Response({
+            "is_complete": False,
+            "missing_fields": ["name", "interests"],
+            "message": "Please complete your profile to proceed."
+        })
 
     missing_fields = []
     if not profile.full_name or profile.full_name == user.username:
@@ -42,18 +35,16 @@ def get_profile_completion_status(request):
 
     is_complete = len(missing_fields) == 0
 
-    return success_response(
-        data={
-            "is_complete": is_complete,
-            "missing_fields": missing_fields,
-            "profile": {
-                "full_name": profile.full_name,
-                "education_level": profile.education_level,
-                "interests": profile.interests or [],
-                "skills": profile.skills or [],
-            } if is_complete else None,
-        }
-    )
+    return Response({
+        "is_complete": is_complete,
+        "missing_fields": missing_fields,
+        "profile": {
+            "full_name": profile.full_name,
+            "education_level": profile.education_level,
+            "interests": profile.interests or [],
+            "skills": profile.skills or [],
+        } if is_complete else None
+    })
 
 
 @api_view(['POST'])
@@ -82,18 +73,7 @@ def update_profile_interests(request):
     # Combine predefined interests + custom interests
     interests = data.get("interests", [])
     custom_interests = data.get("custom_interests", [])
-
-    if isinstance(interests, str):
-        interests = [item.strip() for item in interests.split(",") if item.strip()]
-    elif not isinstance(interests, list):
-        interests = []
-
-    if isinstance(custom_interests, str):
-        custom_interests = [item.strip() for item in custom_interests.split(",") if item.strip()]
-    elif not isinstance(custom_interests, list):
-        custom_interests = []
-
-    all_interests = list(dict.fromkeys(interests + custom_interests))
+    all_interests = list(set(interests + custom_interests))  # Remove duplicates
     profile.interests = all_interests
 
     # Update skills if provided
@@ -101,43 +81,36 @@ def update_profile_interests(request):
         skills = data.get("skills", [])
         if isinstance(skills, str):
             skills = [s.strip() for s in skills.split(",") if s.strip()]
-        elif not isinstance(skills, list):
-            skills = []
         profile.skills = skills
 
     profile.save()
 
-    return success_response(
-        data={
-            "profile": {
-                "full_name": profile.full_name,
-                "interests": profile.interests,
-                "skills": profile.skills,
-            }
-        },
-        message="Profile updated successfully.",
-    )
+    return Response({
+        "success": True,
+        "message": "Profile updated successfully.",
+        "profile": {
+            "full_name": profile.full_name,
+            "interests": profile.interests,
+            "skills": profile.skills,
+        }
+    })
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def upload_cv(request):
     file = request.FILES.get('cv')
-    logger.info("CV upload requested by user_id=%s", request.user.id)
 
     if not file:
-        logger.warning("CV upload rejected: no file provided for user_id=%s", request.user.id)
-        return error_response("No file uploaded", status_code=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
 
     filename = file.name.lower()
     allowed_exts = ['.pdf', '.jpg', '.jpeg', '.png']
     if not any(filename.endswith(ext) for ext in allowed_exts):
-        logger.warning("CV upload rejected: invalid file type for user_id=%s filename=%s", request.user.id, filename)
-        return error_response("Only PDF or Image files (.jpg, .jpeg, .png) allowed", status_code=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "Only PDF or Image files (.jpg, .jpeg, .png) allowed"}, status=status.HTTP_400_BAD_REQUEST)
 
     if file.size > 10 * 1024 * 1024: # Increased to 10MB for images
-        logger.warning("CV upload rejected: file too large for user_id=%s filename=%s", request.user.id, filename)
-        return error_response("File too large (max 10MB)", status_code=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "File too large (max 10MB)"}, status=status.HTTP_400_BAD_REQUEST)
 
     file.seek(0)
     try:
@@ -146,8 +119,7 @@ def upload_cv(request):
         else:
             text = extract_text_from_image(file)
     except Exception as e:
-        logger.error("CV file processing failed for user_id=%s filename=%s", request.user.id, filename, exc_info=True)
-        return error_response(f"Failed to process file: {str(e)}", status_code=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": f"Failed to process file: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
     
     profile, _ = Profile.objects.get_or_create(
         user=request.user,
@@ -166,18 +138,12 @@ def upload_cv(request):
         effective_skills = strongest_subjects if strongest_subjects else extract_subjects(text)[:3]
     else:
         strongest_subjects = []
-        try:
-            data = parse_cv(text)
-        except Exception:
-            logger.error("CV parsing failed for user_id=%s filename=%s", request.user.id, filename, exc_info=True)
-            return error_response("Failed to parse CV content", status_code=status.HTTP_400_BAD_REQUEST)
+        data = parse_cv(text)
         effective_skills = data.get("skills", [])
 
     if school_student and effective_skills:
         existing_interests = profile.interests if isinstance(profile.interests, list) else []
         profile.interests = list(dict.fromkeys(existing_interests + effective_skills))
-
-    resume_analysis = analyze_resume_text(text, effective_skills)
 
     CVProfile.objects.update_or_create(
         user=request.user,
@@ -190,61 +156,30 @@ def upload_cv(request):
     profile.skills = effective_skills
     profile.save()
 
-    # Refresh dependent data so renewed CV skills are reflected across the platform.
-    try:
-        from prediction_module.models import (
-            UserRecommendationCache,
-            SavedRoadmap,
-            CollegeRecommendationCache,
-            CollegeDetailsInsightCache,
-        )
-
-        UserRecommendationCache.objects.filter(user=request.user).delete()
-        SavedRoadmap.objects.filter(user=request.user).delete()
-        CollegeRecommendationCache.objects.filter(user=request.user).delete()
-        CollegeDetailsInsightCache.objects.filter(user=request.user).delete()
-    except Exception:
-        logger.warning("Failed to refresh prediction caches after CV upload for user_id=%s", request.user.id, exc_info=True)
-
-    # Skill-test choices/cooldown should follow renewed skills.
-    SkillTestResult.objects.filter(user=request.user).delete()
-
     upload_kind = "marks card" if school_student else "CV"
     if effective_skills:
         success_message = f"{upload_kind.title()} uploaded successfully. Strongest subjects/skills extracted."
     else:
-        logger.warning("CV upload completed but no skills detected for user_id=%s filename=%s", request.user.id, filename)
         success_message = f"{upload_kind.title()} uploaded successfully, but no clear skills were detected."
 
-    logger.info(
-        "CV upload successful for user_id=%s kind=%s extracted_skills_count=%s",
-        request.user.id,
-        upload_kind,
-        len(effective_skills),
-    )
-
-    return success_response(
-        data={
-            "skills": effective_skills,
-            "strongest_subjects": strongest_subjects if school_student else [],
-            **resume_analysis,
-        },
-        message=success_message,
-    )
+    return Response({
+        "success": True,
+        "message": success_message,
+        "skills": effective_skills,
+        "strongest_subjects": strongest_subjects if school_student else [],
+    })
 
 @api_view(['GET'])
 def api_home(request):
-    return success_response(
-        data={
-            "endpoints": {
-                "Upload CV": "/upload-cv/ [POST]",
-                "Get CV Data": "/cv-data/ [GET]",
-                "Get Token": "/api/token/ [POST]",
-                "Refresh Token": "/api/token/refresh/ [POST]"
-            }
-        },
-        message="Welcome to the SIH CV Module API",
-    )
+    return Response({
+        "message": "Welcome to the SIH CV Module API",
+        "endpoints": {
+            "Upload CV": "/upload-cv/ [POST]",
+            "Get CV Data": "/cv-data/ [GET]",
+            "Get Token": "/api/token/ [POST]",
+            "Refresh Token": "/api/token/refresh/ [POST]"
+        }
+    })
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -252,15 +187,11 @@ def get_cv_data(request):
     try:
         profile = CVProfile.objects.get(user=request.user)
     except CVProfile.DoesNotExist:
-        return error_response("CV not uploaded", status_code=status.HTTP_404_NOT_FOUND)
+        return Response({"error": "CV not uploaded"}, status=status.HTTP_404_NOT_FOUND)
 
-    return success_response(
-        data={
-            "uploaded": True,
-            "skills": profile.skills or [],
-            "has_skills": bool(isinstance(profile.skills, list) and len(profile.skills) > 0),
-        }
-    )
+    return Response({
+        "skills": profile.skills
+    })
 
 
 @api_view(['GET'])
@@ -274,46 +205,23 @@ def get_profile_with_skills(request):
     try:
         profile = Profile.objects.get(user=user)
     except Profile.DoesNotExist:
-        return error_response("Profile not found", status_code=status.HTTP_404_NOT_FOUND)
+        return Response({"error": "Profile not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    return success_response(
-        data={
-            "username": user.username,
-            "full_name": profile.full_name,
-            "email": profile.email,
-            "education_level": profile.education_level,
-            "skills": profile.skills or [],
-            "interests": profile.interests or [],
-        }
-    )
+    return Response({
+        "username": user.username,
+        "full_name": profile.full_name,
+        "email": profile.email,
+        "education_level": profile.education_level,
+        "skills": profile.skills or [],
+        "interests": profile.interests or [],
+    })
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def chatbot_api(request):
-    """Career guidance chatbot endpoint backed by OpenRouter."""
     user = request.user
     message = (request.data.get("message") or "").strip()
-    session_id = (request.data.get("sessionId") or "").strip()
-    raw_history = request.data.get("history") or []
-    raw_flow_context = request.data.get("flowContext") or {}
-
-    history = []
-    if isinstance(raw_history, list):
-        for item in raw_history[-10:]:
-            if not isinstance(item, dict):
-                continue
-            role = (item.get("role") or "").strip().lower()
-            text = (item.get("text") or "").strip()
-            if role not in {"user", "bot"} or not text:
-                continue
-            history.append({"role": role, "text": text[:500]})
-
-    flow_context = raw_flow_context if isinstance(raw_flow_context, dict) else {}
-    effective_message = resolve_followup_message(message, history)
-
-    if not message:
-        return error_response("Message is required.", status_code=400)
 
     profile, _ = Profile.objects.get_or_create(
         user=user,
@@ -324,124 +232,130 @@ def chatbot_api(request):
         },
     )
 
-    def _response(reply, actions=None, include_profile_reminder=True):
-        final_reply = str(reply or "").strip()
-        if include_profile_reminder and not profile_updated:
-            reminder = "Please update your profile details when possible for better guidance."
-            if reminder.lower() not in final_reply.lower():
-                final_reply = f"{final_reply}\n{reminder}" if final_reply else reminder
+    if TestResult.objects.filter(user=user).exists():
+        cv = CVProfile.objects.filter(user=user).first()
+        has_cv_skills = bool(cv and isinstance(cv.skills, list) and len(cv.skills) > 0)
+        school_student = is_school_student(profile.education_level)
+        profile_has_skills = bool(profile.skills and isinstance(profile.skills, list) and len(profile.skills) > 0)
+        has_document_skills = has_cv_skills or profile_has_skills
 
-        return success_response(
-            data={
-                "reply": final_reply,
-                "actions": actions or [],
-            }
+        missing_items = []
+        has_name = profile.full_name and profile.full_name != user.username and len(profile.full_name) > 0
+        has_interests = profile.interests and isinstance(profile.interests, list) and len(profile.interests) > 0
+        profile_is_incomplete = not has_name or not has_interests
+
+        if not has_name:
+            missing_items.append("your name")
+        if not has_interests:
+            missing_items.append("your interests")
+
+        follow_up = ""
+        actions = []
+        if profile_is_incomplete:
+            missing_text = " and ".join(missing_items)
+            follow_up = f" You can also complete {missing_text} from your Profile page."
+            actions.append({"label": "Complete Profile", "route": "/profile"})
+
+        if not has_document_skills:
+            upload_label = "Upload Marks Card" if school_student else "Upload CV"
+            if school_student:
+                follow_up += " Please upload your marks card/CV so I can include your strongest subjects in prediction."
+            else:
+                follow_up += " Please upload your CV or update skills in your Profile so I can include your strengths in prediction."
+            actions.append({"label": upload_label, "type": "upload"})
+            if not school_student:
+                actions.append({"label": "Update Skills in Profile", "route": "/profile"})
+
+        return Response({
+            "reply": f"Your quick test is already completed. Prediction is in progress. Please check back shortly.{follow_up}",
+            "actions": actions
+        })
+
+    has_name = profile.full_name and profile.full_name != user.username and len(profile.full_name) > 0
+    has_interests = profile.interests and isinstance(profile.interests, list) and len(profile.interests) > 0
+    profile_is_incomplete = not has_name or not has_interests
+
+    missing_items = []
+    if not has_name:
+        missing_items.append("your name")
+    if not has_interests:
+        missing_items.append("your interests")
+
+    def with_profile_action(reply, actions):
+        updated_actions = list(actions)
+        if profile_is_incomplete and not any(action.get("route") == "/profile" for action in updated_actions):
+            updated_actions.append({"label": "Complete Profile", "route": "/profile"})
+
+        if profile_is_incomplete and missing_items:
+            missing_text = " and ".join(missing_items)
+            reply = f"{reply} You can also complete {missing_text} from your Profile page."
+
+        return Response({
+            "reply": reply,
+            "actions": updated_actions,
+        })
+
+    cv = CVProfile.objects.filter(user=user).first()
+    has_cv_skills = bool(cv and isinstance(cv.skills, list) and len(cv.skills) > 0)
+    school_student = is_school_student(profile.education_level)
+    
+    # Check if profile has skills saved
+    profile_has_skills = bool(profile.skills and isinstance(profile.skills, list) and len(profile.skills) > 0)
+
+    # Always start with CV flow for non-school students only when no skills exist anywhere
+    if not school_student and not has_cv_skills and not profile_has_skills:
+        return with_profile_action(
+            "Please upload your CV or update your skills in Profile so I can analyze your strengths and guide you to the next step.",
+            [{"label": "Upload CV", "type": "upload"}, {"label": "Update Skills in Profile", "route": "/profile"}],
         )
 
-    has_name = bool(profile.full_name and profile.full_name.strip() and profile.full_name != user.username)
-    has_interests = bool(isinstance(profile.interests, list) and len(profile.interests) > 0)
-    profile_updated = bool(has_name and has_interests)
-    school_student = is_school_student(profile.education_level)
-
-    cv_profile = CVProfile.objects.filter(user=user).first()
-    has_cv_skills = bool(cv_profile and isinstance(cv_profile.skills, list) and len(cv_profile.skills) > 0)
-    has_uploaded_document = bool(cv_profile)
-    profile_has_skills = bool(isinstance(profile.skills, list) and len(profile.skills) > 0)
-    onboarding_completed = bool(profile_updated or has_uploaded_document or profile_has_skills)
-    quick_test_attempted = TestResult.objects.filter(user=user).exists()
-    skill_test_attempted = SkillTestResult.objects.filter(user=user).exists()
-    next_test_label = "Skill Test" if quick_test_attempted else "Quick Test"
-    next_test_phrase = next_test_label.lower()
-
-    def _workflow_actions():
-        actions = []
-
-        if not onboarding_completed:
-            actions.append({"label": "Update Profile", "route": "/profile"})
-            actions.append({"label": "Upload Marks Card", "type": "upload"} if school_student else {"label": "Upload CV", "type": "upload"})
-            return actions
-
-        if not profile_updated:
-            # If a document/skills already exist, do not force profile-update navigation.
-            if not has_uploaded_document and not profile_has_skills:
-                actions.append({"label": "Update Profile", "route": "/profile"})
-                actions.append({"label": "Upload Marks Card", "type": "upload"} if school_student else {"label": "Upload CV", "type": "upload"})
-            else:
-                actions.append({"label": f"Take {next_test_label}", "route": "/quick-test"})
-            return actions
-
-        if not quick_test_attempted:
-            actions.append({"label": "Take Quick Test", "route": "/quick-test"})
-            return actions
-
-        actions.append({"label": "View Recommendations", "route": "/recommendations"})
-        actions.append({"label": "Take Skill Test", "route": "/quick-test"})
-        return actions
-
-    workflow_actions = _workflow_actions()
-
-    # Bootstrap request used when chat opens: show next-step actions immediately.
-    if message.lower() in {"__onboarding__", "start", "hi", "hello", "hey"}:
-        if quick_test_attempted and skill_test_attempted:
-            return _response(
-                "How can I help you with your career or education today?",
-                workflow_actions,
-                include_profile_reminder=False,
+    # For school students, marks card/subjects are valid alternatives to CV upload
+    if school_student and not has_cv_skills and not profile_has_skills:
+        if has_no_cv_intent(message):
+            return with_profile_action(
+                "No problem. Please upload your marks card (PDF/Image) with subject names and marks, or type your favourite subjects like Mathematics, Biology, Computer Science.",
+                [{"label": "Upload Marks Card", "type": "upload"}],
             )
 
-        if not onboarding_completed:
-            return _response(
-                f"Welcome! To get started, upload your {'marks card' if school_student else 'CV'} or update your profile.",
-                workflow_actions,
-            )
+        return with_profile_action(
+            "To get started, please upload your marks card/CV, or share your favourite subjects (like Mathematics, Physics, Biology, Computer Science).",
+            [{"label": "Upload Marks Card", "type": "upload"}],
+        )
 
-        if not profile_updated:
-            return _response(f"Welcome! Document is received. Continue with {next_test_phrase}.", workflow_actions)
+    if has_cv_skills or profile_has_skills:
+        final_skills = cv.skills if has_cv_skills else (profile.skills or [])
+        skills_text = ", ".join(final_skills)
+        return with_profile_action(
+            f"Great {profile.full_name or 'Student'}! Your skills are: {skills_text}. Next step is to take the quick test.",
+            [{"label": "Take Quick Test", "route": "/quick-test"}],
+        )
 
-        if not quick_test_attempted:
-            return _response("Great! Your profile is ready. Continue with the quick test.", workflow_actions)
-
-        return _response("Great progress! Open recommendations next, then take skill test for deeper insights.", workflow_actions)
-
-    # If school users type subjects before uploading marks card, save them as skills.
-    if school_student and not quick_test_attempted and not onboarding_completed:
+    if school_student:
+        # Extract subjects from user message
         subjects = extract_subjects(message)
         if subjects:
+            # Save subjects directly as skills for class 10/12 students
             existing_skills = profile.skills if isinstance(profile.skills, list) else []
             existing_interests = profile.interests if isinstance(profile.interests, list) else []
+
+            # For school students, subjects ARE skills
             profile.skills = list(dict.fromkeys(existing_skills + subjects))
             profile.interests = list(dict.fromkeys(existing_interests + subjects))
             profile.save()
 
-            return _response(
-                f"Saved your subjects as skills: {', '.join(profile.skills)}. Next step: {next_test_phrase}.",
-                [{"label": f"Take {next_test_label}", "route": "/quick-test"}],
+            skill_text = ", ".join(profile.skills)
+            return with_profile_action(
+                f"Perfect! I've saved your subjects as skills: {skill_text}. You can now take the quick test.",
+                [{"label": "Take Quick Test", "route": "/quick-test"}],
             )
 
-    if not is_relevant_question(effective_message):
-        return _response("I can only help with career and education related questions.", workflow_actions)
-
-    prompt = build_prompt(
-        user,
-        effective_message,
-        conversation_history=history,
-        flow_context=flow_context,
-    )
-    reply = call_ai(prompt)
-
-    if not reply:
-        route = flow_context.get("currentRoute") if isinstance(flow_context, dict) else ""
-        route_hint = f" on {route}" if route else ""
-        return _response(
-            f"I can still guide you without AI right now. Based on your profile{route_hint}, continue with the next action below and I’ll support each step.",
-            workflow_actions,
+    if not has_cv_skills and not profile_has_skills:
+        return with_profile_action(
+            "Please upload your CV or update your skills in Profile so I can analyze your strengths and guide you to the next step.",
+            [{"label": "Upload CV", "type": "upload"}, {"label": "Update Skills in Profile", "route": "/profile"}],
         )
 
-    return _response(format_short_reply(reply), workflow_actions)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def chat(request):
-    """Backward-compatible alias for the chatbot endpoint."""
-    return chatbot_api(request)
+    return with_profile_action(
+        "Your skill profile is ready. Please proceed with the quick test.",
+        [{"label": "Take Quick Test", "route": "/quick-test"}],
+    )

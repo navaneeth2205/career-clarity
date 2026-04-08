@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import Loader from "../components/Loader";
+import LoadingModal from "../components/LoadingModal";
 import EmptyState from "../components/EmptyState";
 import AlertDetailsModal from "../components/AlertDetailsModal";
 import { Skeleton, SkeletonCard } from "../components/Skeleton";
@@ -85,6 +87,10 @@ function Alerts() {
 		);
 	}
 
+	if (isLoading) {
+		return <LoadingModal isOpen={true} label="Fetching personalized alerts and opportunities for you..." />;
+	}
+
 	const safePage = Math.min(currentPage, Math.max(totalPages, 1));
 	const startIndex = (safePage - 1) * PAGE_SIZE;
 	const currentAlerts = alerts;
@@ -122,19 +128,8 @@ function Alerts() {
 			)}
 
 			{isLoading ? (
-				<div className="space-y-4">
-					<div className="cc-card p-4">
-						<Skeleton className="h-5 w-36" />
-						<div className="mt-3 space-y-3">
-							<Skeleton className="h-16 w-full" />
-							<Skeleton className="h-16 w-full" />
-						</div>
-					</div>
-					<div className="space-y-4">
-						<SkeletonCard className="p-6" />
-						<SkeletonCard className="p-6" />
-						<SkeletonCard className="p-6" />
-					</div>
+				<div className="flex h-96 items-center justify-center rounded-2xl bg-white shadow-lg">
+					<Loader label="Fetching personalized alerts and opportunities for you..." />
 				</div>
 			) : totalCount > 0 ? (
 				<div>

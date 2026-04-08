@@ -1,5 +1,5 @@
 function Loader({ label = "Loading...", size = "md" }) {
-	const spinnerSize = size === "sm" ? "h-4 w-4" : "h-6 w-6";
+	const spinnerSize = size === "sm" ? "h-4 w-4" : size === "lg" ? "h-8 w-8" : "h-6 w-6";
 	const hasLabel = Boolean(label);
 
 	return (

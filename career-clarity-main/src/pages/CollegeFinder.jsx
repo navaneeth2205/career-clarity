@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Loader from "../components/Loader";
+import LoadingModal from "../components/LoadingModal";
 import EmptyState from "../components/EmptyState";
 import CollegeCard from "../components/CollegeCard";
 import CollegeDetailsModal from "../components/CollegeDetailsModal";
@@ -113,6 +114,10 @@ function CollegeFinder() {
 				className="border-amber-200 bg-amber-50 text-amber-900"
 			/>
 		);
+	}
+
+	if (isLoading) {
+		return <LoadingModal isOpen={true} label="Finding colleges that match your profile..." />;
 	}
 
 	return (

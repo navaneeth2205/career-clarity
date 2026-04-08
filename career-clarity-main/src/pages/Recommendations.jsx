@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import Loader from "../components/Loader";
+import LoadingModal from "../components/LoadingModal";
 import EmptyState from "../components/EmptyState";
 import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { getCareerRecommendations } from "../services/careerService";
@@ -117,26 +119,7 @@ function Recommendations() {
 	}, []);
 
 	if (isLoading) {
-		return (
-			<div className="space-y-6">
-				<div className="cc-card p-8">
-					<Skeleton className="h-5 w-40" />
-					<Skeleton className="mt-3 h-10 w-2/3" />
-					<Skeleton className="mt-3 h-4 w-1/2" />
-				</div>
-				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-					<Skeleton className="h-40 w-full" />
-					<Skeleton className="h-40 w-full" />
-					<Skeleton className="h-40 w-full" />
-					<Skeleton className="h-40 w-full" />
-				</div>
-				<div className="grid gap-6 lg:grid-cols-3">
-					<SkeletonCard className="p-6" />
-					<SkeletonCard className="p-6" />
-					<SkeletonCard className="p-6" />
-				</div>
-			</div>
-		);
+		return <LoadingModal isOpen={true} label="Analyzing your profile and fetching career recommendations..." />;
 	}
 
 	if (blockedMessage) {
