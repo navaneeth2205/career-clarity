@@ -2,6 +2,7 @@ import os
 import secrets
 from pathlib import Path
 from datetime import timedelta
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -30,6 +31,9 @@ def _csv_env(name, default=""):
 
 
 ALLOWED_HOSTS = _csv_env("ALLOWED_HOSTS", "127.0.0.1,localhost")
+RENDER_EXTERNAL_HOSTNAME = (os.environ.get("RENDER_EXTERNAL_HOSTNAME") or "").strip()
+if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -90,14 +94,23 @@ DATABASES = {
 
 DB_ENGINE = (os.environ.get('DB_ENGINE') or '').strip().lower()
 if DB_ENGINE in {'postgres', 'postgresql'}:
+    database_url = (os.environ.get('DATABASE_URL') or '').strip()
+    parsed_db_url = urlparse(database_url) if database_url else None
+
+    parsed_name = (parsed_db_url.path or '').lstrip('/') if parsed_db_url else ''
+    parsed_user = parsed_db_url.username or '' if parsed_db_url else ''
+    parsed_password = parsed_db_url.password or '' if parsed_db_url else ''
+    parsed_host = parsed_db_url.hostname or '' if parsed_db_url else ''
+    parsed_port = str(parsed_db_url.port) if parsed_db_url and parsed_db_url.port else ''
+
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.environ.get('POSTGRES_DB', ''),
-            'USER': os.environ.get('POSTGRES_USER', ''),
-            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', ''),
-            'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
-            'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+            'NAME': os.environ.get('POSTGRES_DB', '') or parsed_name,
+            'USER': os.environ.get('POSTGRES_USER', '') or parsed_user,
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', '') or parsed_password,
+            'HOST': os.environ.get('POSTGRES_HOST', 'localhost') or parsed_host or 'localhost',
+            'PORT': os.environ.get('POSTGRES_PORT', '5432') or parsed_port or '5432',
         }
     }
 
