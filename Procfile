@@ -1,1 +1,1 @@
-web: cd career-clarity-backend && gunicorn core.wsgi:application --bind 0.0.0.0:$PORT
+web: cd career-clarity-backend && python manage.py migrate --noinput && gunicorn core.wsgi:application --bind 0.0.0.0:$PORT
