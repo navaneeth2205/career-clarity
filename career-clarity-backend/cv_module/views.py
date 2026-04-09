@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .models import CVProfile
-from .utils import extract_text_from_pdf, extract_text_from_image, parse_cv, analyze_resume_text
+from .utils import extract_text_from_pdf, extract_text_from_image, parse_cv, analyze_resume_text, extract_keyword_skills
 from accounts.models import Profile
 from test_module.models import TestResult
 from .chat_utils import extract_subjects, is_school_student, has_no_cv_intent, extract_high_marks_subjects
@@ -99,21 +99,21 @@ def update_profile_interests(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def upload_cv(request):
-    file = request.FILES.get('cv')
-
-    if not file:
-        return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
-
-    filename = file.name.lower()
-    allowed_exts = ['.pdf', '.jpg', '.jpeg', '.png']
-    if not any(filename.endswith(ext) for ext in allowed_exts):
-        return Response({"error": "Only PDF or Image files (.jpg, .jpeg, .png) allowed"}, status=status.HTTP_400_BAD_REQUEST)
-
-    if file.size > 10 * 1024 * 1024: # Increased to 10MB for images
-        return Response({"error": "File too large (max 10MB)"}, status=status.HTTP_400_BAD_REQUEST)
-
-    file.seek(0)
     try:
+        file = request.FILES.get('cv')
+
+        if not file:
+            return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+
+        filename = file.name.lower()
+        allowed_exts = ['.pdf', '.jpg', '.jpeg', '.png']
+        if not any(filename.endswith(ext) for ext in allowed_exts):
+            return Response({"error": "Only PDF or Image files (.jpg, .jpeg, .png) allowed"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if file.size > 10 * 1024 * 1024: # Increased to 10MB for images
+            return Response({"error": "File too large (max 10MB)"}, status=status.HTTP_400_BAD_REQUEST)
+
+        file.seek(0)
         if filename.endswith('.pdf'):
             text = extract_text_from_pdf(file)
         else:
@@ -138,23 +138,29 @@ def upload_cv(request):
         effective_skills = strongest_subjects if strongest_subjects else extract_subjects(text)[:3]
     else:
         strongest_subjects = []
-        data = parse_cv(text)
-        analysis = analyze_resume_text(text, data.get("skills", []))
-        skill_candidates = []
-        for source in (
-            data.get("skills", []),
-            analysis.get("extractedSkills", []),
-            analysis.get("technicalTerms", []),
-            analysis.get("industryTerms", []),
-        ):
-            if isinstance(source, list):
-                skill_candidates.extend(source)
+        try:
+            data = parse_cv(text)
+            analysis = analyze_resume_text(text, data.get("skills", []))
+            skill_candidates = []
+            for source in (
+                data.get("skills", []),
+                analysis.get("extractedSkills", []),
+                analysis.get("technicalTerms", []),
+                analysis.get("industryTerms", []),
+            ):
+                if isinstance(source, list):
+                    skill_candidates.extend(source)
 
-        effective_skills = list(dict.fromkeys([
-            str(skill).strip().lower()
-            for skill in skill_candidates
-            if str(skill).strip()
-        ]))
+            effective_skills = list(dict.fromkeys([
+                str(skill).strip().lower()
+                for skill in skill_candidates
+                if str(skill).strip()
+            ]))
+        except Exception:
+            effective_skills = []
+
+        if not effective_skills:
+            effective_skills = extract_keyword_skills(text, limit=25)
 
     if school_student and effective_skills:
         existing_interests = profile.interests if isinstance(profile.interests, list) else []

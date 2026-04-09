@@ -260,6 +260,27 @@ SKILLS_LIST = [
     "media planning", "storytelling", "wordpress", "cms",
 ]
 
+
+def extract_keyword_skills(text, limit=None):
+    """Extract skills by direct keyword matching as a lightweight fallback."""
+    lowered = (text or "").lower()
+    found = []
+    seen = set()
+
+    for skill in SKILLS_LIST:
+        normalized = skill.lower().strip()
+        if not normalized or normalized in seen:
+            continue
+
+        pattern = r"\b" + re.escape(normalized) + r"\b"
+        if re.search(pattern, lowered):
+            seen.add(normalized)
+            found.append(normalized)
+            if limit and len(found) >= limit:
+                break
+
+    return found
+
 def extract_text_from_image(file):
     """Extract text from an image using EasyOCR."""
     try:
