@@ -35,6 +35,10 @@ RENDER_EXTERNAL_HOSTNAME = (os.environ.get("RENDER_EXTERNAL_HOSTNAME") or "").st
 if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
+# Safety fallback for Render deployments when ALLOWED_HOSTS env is not applied yet.
+if '.onrender.com' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('.onrender.com')
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -93,8 +97,14 @@ DATABASES = {
 }
 
 DB_ENGINE = (os.environ.get('DB_ENGINE') or '').strip().lower()
-if DB_ENGINE in {'postgres', 'postgresql'}:
-    database_url = (os.environ.get('DATABASE_URL') or '').strip()
+
+database_url = (os.environ.get('DATABASE_URL') or '').strip()
+has_postgres_env = any(
+    (os.environ.get(name) or '').strip()
+    for name in ('POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_HOST', 'POSTGRES_PORT')
+)
+
+if DB_ENGINE in {'postgres', 'postgresql'} or database_url or has_postgres_env:
     parsed_db_url = urlparse(database_url) if database_url else None
 
     parsed_name = (parsed_db_url.path or '').lstrip('/') if parsed_db_url else ''
@@ -109,8 +119,8 @@ if DB_ENGINE in {'postgres', 'postgresql'}:
             'NAME': os.environ.get('POSTGRES_DB', '') or parsed_name,
             'USER': os.environ.get('POSTGRES_USER', '') or parsed_user,
             'PASSWORD': os.environ.get('POSTGRES_PASSWORD', '') or parsed_password,
-            'HOST': os.environ.get('POSTGRES_HOST', 'localhost') or parsed_host or 'localhost',
-            'PORT': os.environ.get('POSTGRES_PORT', '5432') or parsed_port or '5432',
+            'HOST': (os.environ.get('POSTGRES_HOST') or '').strip() or parsed_host or 'localhost',
+            'PORT': (os.environ.get('POSTGRES_PORT') or '').strip() or parsed_port or '5432',
         }
     }
 
