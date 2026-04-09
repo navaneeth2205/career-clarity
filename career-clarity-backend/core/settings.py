@@ -121,16 +121,28 @@ if database_url or has_complete_postgres_env:
     parsed_host = parsed_db_url.hostname or '' if parsed_db_url else ''
     parsed_port = str(parsed_db_url.port) if parsed_db_url and parsed_db_url.port else ''
 
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': postgres_name or parsed_name,
-            'USER': postgres_user or parsed_user,
-            'PASSWORD': postgres_password or parsed_password,
-            'HOST': postgres_host or parsed_host or 'localhost',
-            'PORT': postgres_port or parsed_port or '5432',
+    if parsed_db_url:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': parsed_name,
+                'USER': parsed_user,
+                'PASSWORD': parsed_password,
+                'HOST': parsed_host or 'localhost',
+                'PORT': parsed_port or '5432',
+            }
         }
-    }
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': postgres_name,
+                'USER': postgres_user,
+                'PASSWORD': postgres_password,
+                'HOST': postgres_host or 'localhost',
+                'PORT': postgres_port or '5432',
+            }
+        }
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
