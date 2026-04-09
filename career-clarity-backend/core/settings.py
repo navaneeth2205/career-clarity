@@ -6,12 +6,12 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / '.env', override=True)
+load_dotenv(BASE_DIR / '.env', override=False)
 
 # Also load workspace-level .env if present (useful in local setups).
 PROJECT_ROOT_ENV = BASE_DIR.parent / '.env'
 if PROJECT_ROOT_ENV.exists():
-    load_dotenv(PROJECT_ROOT_ENV, override=True)
+    load_dotenv(PROJECT_ROOT_ENV, override=False)
 
 LOG_DIR = BASE_DIR / 'logs'
 LOG_DIR.mkdir(exist_ok=True)
@@ -23,7 +23,12 @@ GOOGLE_CLIENT_ID = (
     or ''
 ).strip()
 
-DEBUG = (os.environ.get('DEBUG', 'True') or 'True').strip().lower() in {'1', 'true', 'yes', 'on'}
+IS_RENDER = bool((os.environ.get("RENDER") or "").strip()) or bool((os.environ.get("RENDER_EXTERNAL_HOSTNAME") or "").strip())
+debug_raw = os.environ.get('DEBUG')
+if debug_raw is None:
+    DEBUG = not IS_RENDER
+else:
+    DEBUG = str(debug_raw).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 def _csv_env(name, default=""):
     raw_value = os.environ.get(name, default)
@@ -99,12 +104,15 @@ DATABASES = {
 DB_ENGINE = (os.environ.get('DB_ENGINE') or '').strip().lower()
 
 database_url = (os.environ.get('DATABASE_URL') or '').strip()
-has_postgres_env = any(
-    (os.environ.get(name) or '').strip()
-    for name in ('POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_HOST', 'POSTGRES_PORT')
-)
+postgres_name = (os.environ.get('POSTGRES_DB') or '').strip()
+postgres_user = (os.environ.get('POSTGRES_USER') or '').strip()
+postgres_password = (os.environ.get('POSTGRES_PASSWORD') or '').strip()
+postgres_host = (os.environ.get('POSTGRES_HOST') or '').strip()
+postgres_port = (os.environ.get('POSTGRES_PORT') or '').strip()
 
-if DB_ENGINE in {'postgres', 'postgresql'} or database_url or has_postgres_env:
+has_complete_postgres_env = all([postgres_name, postgres_user, postgres_password, postgres_host])
+
+if database_url or has_complete_postgres_env:
     parsed_db_url = urlparse(database_url) if database_url else None
 
     parsed_name = (parsed_db_url.path or '').lstrip('/') if parsed_db_url else ''
@@ -116,11 +124,11 @@ if DB_ENGINE in {'postgres', 'postgresql'} or database_url or has_postgres_env:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.environ.get('POSTGRES_DB', '') or parsed_name,
-            'USER': os.environ.get('POSTGRES_USER', '') or parsed_user,
-            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', '') or parsed_password,
-            'HOST': (os.environ.get('POSTGRES_HOST') or '').strip() or parsed_host or 'localhost',
-            'PORT': (os.environ.get('POSTGRES_PORT') or '').strip() or parsed_port or '5432',
+            'NAME': postgres_name or parsed_name,
+            'USER': postgres_user or parsed_user,
+            'PASSWORD': postgres_password or parsed_password,
+            'HOST': postgres_host or parsed_host or 'localhost',
+            'PORT': postgres_port or parsed_port or '5432',
         }
     }
 
