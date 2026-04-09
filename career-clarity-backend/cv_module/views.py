@@ -110,7 +110,7 @@ def upload_cv(request):
         if not any(filename.endswith(ext) for ext in allowed_exts):
             return Response({"error": "Only PDF or Image files (.jpg, .jpeg, .png) allowed"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if file.size > 10 * 1024 * 1024: # Increased to 10MB for images
+        if file.size > 10 * 1024 * 1024:
             return Response({"error": "File too large (max 10MB)"}, status=status.HTTP_400_BAD_REQUEST)
 
         file.seek(0)
@@ -118,77 +118,83 @@ def upload_cv(request):
             text = extract_text_from_pdf(file)
         else:
             text = extract_text_from_image(file)
-    except Exception as e:
-        return Response({"error": f"Failed to process file: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
-    
-    profile, _ = Profile.objects.get_or_create(
-        user=request.user,
-        defaults={
-            "full_name": request.user.username,
-            "email": request.user.email or "",
-            "education_level": "",
-        },
-    )
 
-    school_student = is_school_student(profile.education_level)
+        profile, _ = Profile.objects.get_or_create(
+            user=request.user,
+            defaults={
+                "full_name": request.user.username,
+                "email": request.user.email or "",
+                "education_level": "",
+            },
+        )
 
-    # Dedicated marks-card flow for school students (no CV parser dependency).
-    if school_student:
-        strongest_subjects = extract_high_marks_subjects(text)
-        effective_skills = strongest_subjects if strongest_subjects else extract_subjects(text)[:3]
-    else:
-        strongest_subjects = []
-        try:
-            data = parse_cv(text)
-            analysis = analyze_resume_text(text, data.get("skills", []))
-            skill_candidates = []
-            for source in (
-                data.get("skills", []),
-                analysis.get("extractedSkills", []),
-                analysis.get("technicalTerms", []),
-                analysis.get("industryTerms", []),
-            ):
-                if isinstance(source, list):
-                    skill_candidates.extend(source)
+        school_student = is_school_student(profile.education_level)
 
-            effective_skills = list(dict.fromkeys([
-                str(skill).strip().lower()
-                for skill in skill_candidates
-                if str(skill).strip()
-            ]))
-        except Exception:
-            effective_skills = []
+        # Dedicated marks-card flow for school students (no CV parser dependency).
+        if school_student:
+            strongest_subjects = extract_high_marks_subjects(text)
+            effective_skills = strongest_subjects if strongest_subjects else extract_subjects(text)[:3]
+        else:
+            strongest_subjects = []
+            try:
+                data = parse_cv(text)
+                analysis = analyze_resume_text(text, data.get("skills", []))
+                skill_candidates = []
+                for source in (
+                    data.get("skills", []),
+                    analysis.get("extractedSkills", []),
+                    analysis.get("technicalTerms", []),
+                    analysis.get("industryTerms", []),
+                ):
+                    if isinstance(source, list):
+                        skill_candidates.extend(source)
 
-        if not effective_skills:
-            effective_skills = extract_keyword_skills(text, limit=25)
+                effective_skills = list(dict.fromkeys([
+                    str(skill).strip().lower()
+                    for skill in skill_candidates
+                    if str(skill).strip()
+                ]))
+            except Exception:
+                effective_skills = []
 
-    if school_student and effective_skills:
-        existing_interests = profile.interests if isinstance(profile.interests, list) else []
-        profile.interests = list(dict.fromkeys(existing_interests + effective_skills))
+            if not effective_skills:
+                effective_skills = extract_keyword_skills(text, limit=25)
 
-    CVProfile.objects.update_or_create(
-        user=request.user,
-        defaults={
+        if school_student and effective_skills:
+            existing_interests = profile.interests if isinstance(profile.interests, list) else []
+            profile.interests = list(dict.fromkeys(existing_interests + effective_skills))
+
+        CVProfile.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "skills": effective_skills,
+                "full_text": text,
+            }
+        )
+
+        profile.skills = effective_skills
+        profile.save()
+
+        upload_kind = "marks card" if school_student else "CV"
+        if effective_skills:
+            success_message = f"{upload_kind.title()} uploaded successfully. Strongest subjects/skills extracted."
+        else:
+            success_message = f"{upload_kind.title()} uploaded successfully, but no clear skills were detected."
+
+        return Response({
+            "success": True,
+            "message": success_message,
             "skills": effective_skills,
-            "full_text": text,
-        }
-    )
-
-    profile.skills = effective_skills
-    profile.save()
-
-    upload_kind = "marks card" if school_student else "CV"
-    if effective_skills:
-        success_message = f"{upload_kind.title()} uploaded successfully. Strongest subjects/skills extracted."
-    else:
-        success_message = f"{upload_kind.title()} uploaded successfully, but no clear skills were detected."
-
-    return Response({
-        "success": True,
-        "message": success_message,
-        "skills": effective_skills,
-        "strongest_subjects": strongest_subjects if school_student else [],
-    })
+            "strongest_subjects": strongest_subjects if school_student else [],
+        })
+    except Exception as exc:
+        return Response(
+            {
+                "error": "CV upload failed",
+                "detail": str(exc),
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 @api_view(['GET'])
 def api_home(request):
@@ -241,188 +247,207 @@ def get_profile_with_skills(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def chatbot_api(request):
-    user = request.user
-    message = (request.data.get("message") or "").strip()
+    try:
+        user = request.user
+        message = (request.data.get("message") or "").strip()
 
-    profile, _ = Profile.objects.get_or_create(
-        user=user,
-        defaults={
-            "full_name": user.username,
-            "email": user.email or "",
-            "education_level": "",
-        },
-    )
+        profile, _ = Profile.objects.get_or_create(
+            user=user,
+            defaults={
+                "full_name": user.username,
+                "email": user.email or "",
+                "education_level": "",
+            },
+        )
 
-    if TestResult.objects.filter(user=user).exists():
-        cv = CVProfile.objects.filter(user=user).first()
-        if cv and (not cv.skills or not isinstance(cv.skills, list) or len(cv.skills) == 0) and getattr(cv, "full_text", ""):
-            reparsed = parse_cv(cv.full_text)
-            analysis = analyze_resume_text(cv.full_text, reparsed.get("skills", []))
-            recovered_skills = []
-            for source in (
-                reparsed.get("skills", []),
-                analysis.get("extractedSkills", []),
-                analysis.get("technicalTerms", []),
-                analysis.get("industryTerms", []),
-            ):
-                if isinstance(source, list):
-                    recovered_skills.extend(source)
+        if TestResult.objects.filter(user=user).exists():
+            cv = CVProfile.objects.filter(user=user).first()
+            if cv and (not cv.skills or not isinstance(cv.skills, list) or len(cv.skills) == 0) and getattr(cv, "full_text", ""):
+                try:
+                    reparsed = parse_cv(cv.full_text)
+                    analysis = analyze_resume_text(cv.full_text, reparsed.get("skills", []))
+                    recovered_skills = []
+                    for source in (
+                        reparsed.get("skills", []),
+                        analysis.get("extractedSkills", []),
+                        analysis.get("technicalTerms", []),
+                        analysis.get("industryTerms", []),
+                    ):
+                        if isinstance(source, list):
+                            recovered_skills.extend(source)
 
-            recovered_skills = list(dict.fromkeys([
-                str(skill).strip().lower()
-                for skill in recovered_skills
-                if str(skill).strip()
-            ]))
+                    recovered_skills = list(dict.fromkeys([
+                        str(skill).strip().lower()
+                        for skill in recovered_skills
+                        if str(skill).strip()
+                    ]))
 
-            if recovered_skills:
-                cv.skills = recovered_skills
-                cv.save(update_fields=["skills"])
+                    if recovered_skills:
+                        cv.skills = recovered_skills
+                        cv.save(update_fields=["skills"])
+                except Exception:
+                    pass
 
-        has_cv_skills = bool(cv and isinstance(cv.skills, list) and len(cv.skills) > 0)
-        school_student = is_school_student(profile.education_level)
-        profile_has_skills = bool(profile.skills and isinstance(profile.skills, list) and len(profile.skills) > 0)
-        has_document_skills = has_cv_skills or profile_has_skills
+            has_cv_skills = bool(cv and isinstance(cv.skills, list) and len(cv.skills) > 0)
+            school_student = is_school_student(profile.education_level)
+            profile_has_skills = bool(profile.skills and isinstance(profile.skills, list) and len(profile.skills) > 0)
+            has_document_skills = has_cv_skills or profile_has_skills
 
-        missing_items = []
+            missing_items = []
+            has_name = profile.full_name and profile.full_name != user.username and len(profile.full_name) > 0
+            has_interests = profile.interests and isinstance(profile.interests, list) and len(profile.interests) > 0
+            profile_is_incomplete = not has_name or not has_interests
+
+            if not has_name:
+                missing_items.append("your name")
+            if not has_interests:
+                missing_items.append("your interests")
+
+            follow_up = ""
+            actions = []
+            if profile_is_incomplete:
+                missing_text = " and ".join(missing_items)
+                follow_up = f" You can also complete {missing_text} from your Profile page."
+                actions.append({"label": "Complete Profile", "route": "/profile"})
+
+            if not has_document_skills:
+                upload_label = "Upload Marks Card" if school_student else "Upload CV"
+                if school_student:
+                    follow_up += " Please upload your marks card/CV so I can include your strongest subjects in prediction."
+                else:
+                    follow_up += " Please upload your CV or update skills in your Profile so I can include your strengths in prediction."
+                actions.append({"label": upload_label, "type": "upload"})
+                if not school_student:
+                    actions.append({"label": "Update Skills in Profile", "route": "/profile"})
+
+            return Response({
+                "reply": f"Your quick test is already completed. Prediction is in progress. Please check back shortly.{follow_up}",
+                "actions": actions
+            })
+
         has_name = profile.full_name and profile.full_name != user.username and len(profile.full_name) > 0
         has_interests = profile.interests and isinstance(profile.interests, list) and len(profile.interests) > 0
         profile_is_incomplete = not has_name or not has_interests
 
+        missing_items = []
         if not has_name:
             missing_items.append("your name")
         if not has_interests:
             missing_items.append("your interests")
 
-        follow_up = ""
-        actions = []
-        if profile_is_incomplete:
-            missing_text = " and ".join(missing_items)
-            follow_up = f" You can also complete {missing_text} from your Profile page."
-            actions.append({"label": "Complete Profile", "route": "/profile"})
+        def with_profile_action(reply, actions):
+            updated_actions = list(actions)
+            if profile_is_incomplete and not any(action.get("route") == "/profile" for action in updated_actions):
+                updated_actions.append({"label": "Complete Profile", "route": "/profile"})
 
-        if not has_document_skills:
-            upload_label = "Upload Marks Card" if school_student else "Upload CV"
-            if school_student:
-                follow_up += " Please upload your marks card/CV so I can include your strongest subjects in prediction."
-            else:
-                follow_up += " Please upload your CV or update skills in your Profile so I can include your strengths in prediction."
-            actions.append({"label": upload_label, "type": "upload"})
-            if not school_student:
-                actions.append({"label": "Update Skills in Profile", "route": "/profile"})
+            if profile_is_incomplete and missing_items:
+                missing_text = " and ".join(missing_items)
+                reply = f"{reply} You can also complete {missing_text} from your Profile page."
 
-        return Response({
-            "reply": f"Your quick test is already completed. Prediction is in progress. Please check back shortly.{follow_up}",
-            "actions": actions
-        })
+            return Response({
+                "reply": reply,
+                "actions": updated_actions,
+            })
 
-    has_name = profile.full_name and profile.full_name != user.username and len(profile.full_name) > 0
-    has_interests = profile.interests and isinstance(profile.interests, list) and len(profile.interests) > 0
-    profile_is_incomplete = not has_name or not has_interests
+        cv = CVProfile.objects.filter(user=user).first()
+        if cv and (not cv.skills or not isinstance(cv.skills, list) or len(cv.skills) == 0) and getattr(cv, "full_text", ""):
+            try:
+                reparsed = parse_cv(cv.full_text)
+                analysis = analyze_resume_text(cv.full_text, reparsed.get("skills", []))
+                recovered_skills = []
+                for source in (
+                    reparsed.get("skills", []),
+                    analysis.get("extractedSkills", []),
+                    analysis.get("technicalTerms", []),
+                    analysis.get("industryTerms", []),
+                ):
+                    if isinstance(source, list):
+                        recovered_skills.extend(source)
 
-    missing_items = []
-    if not has_name:
-        missing_items.append("your name")
-    if not has_interests:
-        missing_items.append("your interests")
+                recovered_skills = list(dict.fromkeys([
+                    str(skill).strip().lower()
+                    for skill in recovered_skills
+                    if str(skill).strip()
+                ]))
 
-    def with_profile_action(reply, actions):
-        updated_actions = list(actions)
-        if profile_is_incomplete and not any(action.get("route") == "/profile" for action in updated_actions):
-            updated_actions.append({"label": "Complete Profile", "route": "/profile"})
+                if recovered_skills:
+                    cv.skills = recovered_skills
+                    cv.save(update_fields=["skills"])
+            except Exception:
+                pass
 
-        if profile_is_incomplete and missing_items:
-            missing_text = " and ".join(missing_items)
-            reply = f"{reply} You can also complete {missing_text} from your Profile page."
+        has_cv_skills = bool(cv and isinstance(cv.skills, list) and len(cv.skills) > 0)
+        school_student = is_school_student(profile.education_level)
+        
+        # Check if profile has skills saved
+        profile_has_skills = bool(profile.skills and isinstance(profile.skills, list) and len(profile.skills) > 0)
 
-        return Response({
-            "reply": reply,
-            "actions": updated_actions,
-        })
-
-    cv = CVProfile.objects.filter(user=user).first()
-    if cv and (not cv.skills or not isinstance(cv.skills, list) or len(cv.skills) == 0) and getattr(cv, "full_text", ""):
-        reparsed = parse_cv(cv.full_text)
-        analysis = analyze_resume_text(cv.full_text, reparsed.get("skills", []))
-        recovered_skills = []
-        for source in (
-            reparsed.get("skills", []),
-            analysis.get("extractedSkills", []),
-            analysis.get("technicalTerms", []),
-            analysis.get("industryTerms", []),
-        ):
-            if isinstance(source, list):
-                recovered_skills.extend(source)
-
-        recovered_skills = list(dict.fromkeys([
-            str(skill).strip().lower()
-            for skill in recovered_skills
-            if str(skill).strip()
-        ]))
-
-        if recovered_skills:
-            cv.skills = recovered_skills
-            cv.save(update_fields=["skills"])
-
-    has_cv_skills = bool(cv and isinstance(cv.skills, list) and len(cv.skills) > 0)
-    school_student = is_school_student(profile.education_level)
-    
-    # Check if profile has skills saved
-    profile_has_skills = bool(profile.skills and isinstance(profile.skills, list) and len(profile.skills) > 0)
-
-    # Always start with CV flow for non-school students only when no skills exist anywhere
-    if not school_student and not has_cv_skills and not profile_has_skills:
-        return with_profile_action(
-            "Please upload your CV or update your skills in Profile so I can analyze your strengths and guide you to the next step.",
-            [{"label": "Upload CV", "type": "upload"}, {"label": "Update Skills in Profile", "route": "/profile"}],
-        )
-
-    # For school students, marks card/subjects are valid alternatives to CV upload
-    if school_student and not has_cv_skills and not profile_has_skills:
-        if has_no_cv_intent(message):
+        # Always start with CV flow for non-school students only when no skills exist anywhere
+        if not school_student and not has_cv_skills and not profile_has_skills:
             return with_profile_action(
-                "No problem. Please upload your marks card (PDF/Image) with subject names and marks, or type your favourite subjects like Mathematics, Biology, Computer Science.",
+                "Please upload your CV or update your skills in Profile so I can analyze your strengths and guide you to the next step.",
+                [{"label": "Upload CV", "type": "upload"}, {"label": "Update Skills in Profile", "route": "/profile"}],
+            )
+
+        # For school students, marks card/subjects are valid alternatives to CV upload
+        if school_student and not has_cv_skills and not profile_has_skills:
+            if has_no_cv_intent(message):
+                return with_profile_action(
+                    "No problem. Please upload your marks card (PDF/Image) with subject names and marks, or type your favourite subjects like Mathematics, Biology, Computer Science.",
+                    [{"label": "Upload Marks Card", "type": "upload"}],
+                )
+
+            return with_profile_action(
+                "To get started, please upload your marks card/CV, or share your favourite subjects (like Mathematics, Physics, Biology, Computer Science).",
                 [{"label": "Upload Marks Card", "type": "upload"}],
             )
 
-        return with_profile_action(
-            "To get started, please upload your marks card/CV, or share your favourite subjects (like Mathematics, Physics, Biology, Computer Science).",
-            [{"label": "Upload Marks Card", "type": "upload"}],
-        )
-
-    if has_cv_skills or profile_has_skills:
-        final_skills = cv.skills if has_cv_skills else (profile.skills or [])
-        skills_text = ", ".join(final_skills)
-        return with_profile_action(
-            f"Great {profile.full_name or 'Student'}! Your skills are: {skills_text}. Next step is to take the quick test.",
-            [{"label": "Take Quick Test", "route": "/quick-test"}],
-        )
-
-    if school_student:
-        # Extract subjects from user message
-        subjects = extract_subjects(message)
-        if subjects:
-            # Save subjects directly as skills for class 10/12 students
-            existing_skills = profile.skills if isinstance(profile.skills, list) else []
-            existing_interests = profile.interests if isinstance(profile.interests, list) else []
-
-            # For school students, subjects ARE skills
-            profile.skills = list(dict.fromkeys(existing_skills + subjects))
-            profile.interests = list(dict.fromkeys(existing_interests + subjects))
-            profile.save()
-
-            skill_text = ", ".join(profile.skills)
+        if has_cv_skills or profile_has_skills:
+            final_skills = cv.skills if has_cv_skills else (profile.skills or [])
+            skills_text = ", ".join(final_skills)
             return with_profile_action(
-                f"Perfect! I've saved your subjects as skills: {skill_text}. You can now take the quick test.",
+                f"Great {profile.full_name or 'Student'}! Your skills are: {skills_text}. Next step is to take the quick test.",
                 [{"label": "Take Quick Test", "route": "/quick-test"}],
             )
 
-    if not has_cv_skills and not profile_has_skills:
-        return with_profile_action(
-            "Please upload your CV or update your skills in Profile so I can analyze your strengths and guide you to the next step.",
-            [{"label": "Upload CV", "type": "upload"}, {"label": "Update Skills in Profile", "route": "/profile"}],
-        )
+        if school_student:
+            # Extract subjects from user message
+            subjects = extract_subjects(message)
+            if subjects:
+                # Save subjects directly as skills for class 10/12 students
+                existing_skills = profile.skills if isinstance(profile.skills, list) else []
+                existing_interests = profile.interests if isinstance(profile.interests, list) else []
 
-    return with_profile_action(
-        "Your skill profile is ready. Please proceed with the quick test.",
-        [{"label": "Take Quick Test", "route": "/quick-test"}],
-    )
+                # For school students, subjects ARE skills
+                profile.skills = list(dict.fromkeys(existing_skills + subjects))
+                profile.interests = list(dict.fromkeys(existing_interests + subjects))
+                profile.save()
+
+                skill_text = ", ".join(profile.skills)
+                return with_profile_action(
+                    f"Perfect! I've saved your subjects as skills: {skill_text}. You can now take the quick test.",
+                    [{"label": "Take Quick Test", "route": "/quick-test"}],
+                )
+
+        if not has_cv_skills and not profile_has_skills:
+            return with_profile_action(
+                "Please upload your CV or update your skills in Profile so I can analyze your strengths and guide you to the next step.",
+                [{"label": "Upload CV", "type": "upload"}, {"label": "Update Skills in Profile", "route": "/profile"}],
+            )
+
+        return with_profile_action(
+            "Your skill profile is ready. Please proceed with the quick test.",
+            [{"label": "Take Quick Test", "route": "/quick-test"}],
+        )
+    except Exception as exc:
+        return Response(
+            {
+                "reply": "I could not process your profile right now. Please upload your CV or refresh and try again.",
+                "actions": [
+                    {"label": "Upload CV", "type": "upload"},
+                    {"label": "Complete Profile", "route": "/profile"},
+                ],
+                "detail": str(exc),
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
