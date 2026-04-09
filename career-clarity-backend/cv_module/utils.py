@@ -1,8 +1,4 @@
 import spacy
-from spacy.matcher import PhraseMatcher
-from spacy.util import filter_spans
-from spacy.tokens import Span
-import pdfplumber
 import os
 import io
 import sys
@@ -11,6 +7,14 @@ from contextlib import contextmanager
 
 # Force UTF-8 encoding for the process
 os.environ["PYTHONIOENCODING"] = "utf-8"
+
+
+def safe_print(msg):
+    """Safely print to console even if encoding doesn't support characters."""
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        print(msg.encode('ascii', errors='replace').decode('ascii'))
 
 @contextmanager
 def suppress_stdout_stderr():
@@ -29,6 +33,8 @@ def suppress_stdout_stderr():
 # Lazy load OCR reader
 _ocr_reader = None
 _nlp_uses_fallback = False
+_nlp = None
+_matcher = None
 
 def get_ocr_reader():
     global _ocr_reader
@@ -61,14 +67,22 @@ def _build_nlp():
         return fallback_nlp
 
 
-nlp = _build_nlp()
+def _get_nlp():
+    global _nlp
+    if _nlp is None:
+        _nlp = _build_nlp()
+    return _nlp
 
-def safe_print(msg):
-    """Safely print to console even if encoding doesn't support characters."""
-    try:
-        print(msg)
-    except UnicodeEncodeError:
-        print(msg.encode('ascii', errors='replace').decode('ascii'))
+
+def _get_matcher():
+    global _matcher
+    if _matcher is None:
+        from spacy.matcher import PhraseMatcher
+
+        nlp = _get_nlp()
+        _matcher = PhraseMatcher(nlp.vocab, attr="LOWER")
+        _matcher.add("SKILL", [nlp.make_doc(skill) for skill in SKILLS_LIST])
+    return _matcher
 
 SKILLS_LIST = [
     # ── CS / IT: Programming Languages ──────────────────────────────────────
@@ -246,10 +260,6 @@ SKILLS_LIST = [
     "media planning", "storytelling", "wordpress", "cms",
 ]
 
-# Build matcher ONCE at module load — not on every request
-_MATCHER = PhraseMatcher(nlp.vocab, attr="LOWER")
-_MATCHER.add("SKILL", [nlp.make_doc(skill) for skill in SKILLS_LIST])
-
 def extract_text_from_image(file):
     """Extract text from an image using EasyOCR."""
     try:
@@ -271,6 +281,8 @@ def extract_text_from_image(file):
         raise Exception(f"OCR Error: {str(e)}")
 
 def extract_text_from_pdf(file):
+    import pdfplumber
+
     text = ""
     try:
         safe_print(f"[DEBUG] Starting extraction for file: {getattr(file, 'name', 'Uploaded File')}")
@@ -309,6 +321,9 @@ def extract_text_from_pdf(file):
     return text
 
 def parse_cv(text):
+    from spacy.tokens import Span
+    from spacy.util import filter_spans
+
     safe_print("[DEBUG] Starting parse_cv...")
     
     # Cap text length — CVs are short; this avoids slow NLP on huge OCR dumps
@@ -316,10 +331,11 @@ def parse_cv(text):
     
     # Use make_doc (tokenization only) — PhraseMatcher doesn't need POS/NER/DEP
     # This is ~10x faster than nlp(text) which runs the full pipeline
+    nlp = _get_nlp()
     doc = nlp.make_doc(text)
     
     # Skill Extraction — use pre-built module-level matcher (fast)
-    matches = _MATCHER(doc)
+    matches = _get_matcher()(doc)
     
     spans = [Span(doc, start, end, label="SKILL") for _, start, end in matches]
     filtered_spans = filter_spans(spans)
@@ -481,6 +497,7 @@ def analyze_resume_text(text, extracted_skills=None):
     text = (text or "")[:9000]
     extracted_skills = [str(skill).strip().lower() for skill in (extracted_skills or []) if str(skill).strip()]
 
+    nlp = _get_nlp()
     doc = nlp(text) if text.strip() else nlp.make_doc("")
     cleaned_text = _safe_lower(text)
     lines, bullet_lines = _split_bullets(text)

@@ -21,7 +21,7 @@ export async function sendChatMessage(message, options = {}) {
 	};
 
 	try {
-		const response = await api.post("/chatbot/", payload);
+		const response = await api.post("/cv/chatbot/", payload);
 		return getApiData(response);
 	} catch (error) {
 		const status = error?.response?.status;

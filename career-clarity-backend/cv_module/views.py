@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .models import CVProfile
-from .utils import extract_text_from_pdf, extract_text_from_image, parse_cv
+from .utils import extract_text_from_pdf, extract_text_from_image, parse_cv, analyze_resume_text
 from accounts.models import Profile
 from test_module.models import TestResult
 from .chat_utils import extract_subjects, is_school_student, has_no_cv_intent, extract_high_marks_subjects
@@ -62,7 +62,7 @@ def update_profile_interests(request):
         defaults={
             "full_name": user.username,
             "email": user.email or "",
-            "education_level": "Class 12",
+            "education_level": "",
         }
     )
 
@@ -126,7 +126,7 @@ def upload_cv(request):
         defaults={
             "full_name": request.user.username,
             "email": request.user.email or "",
-            "education_level": "Class 12",
+            "education_level": "",
         },
     )
 
@@ -139,7 +139,22 @@ def upload_cv(request):
     else:
         strongest_subjects = []
         data = parse_cv(text)
-        effective_skills = data.get("skills", [])
+        analysis = analyze_resume_text(text, data.get("skills", []))
+        skill_candidates = []
+        for source in (
+            data.get("skills", []),
+            analysis.get("extractedSkills", []),
+            analysis.get("technicalTerms", []),
+            analysis.get("industryTerms", []),
+        ):
+            if isinstance(source, list):
+                skill_candidates.extend(source)
+
+        effective_skills = list(dict.fromkeys([
+            str(skill).strip().lower()
+            for skill in skill_candidates
+            if str(skill).strip()
+        ]))
 
     if school_student and effective_skills:
         existing_interests = profile.interests if isinstance(profile.interests, list) else []
@@ -228,12 +243,35 @@ def chatbot_api(request):
         defaults={
             "full_name": user.username,
             "email": user.email or "",
-            "education_level": "Class 12",
+            "education_level": "",
         },
     )
 
     if TestResult.objects.filter(user=user).exists():
         cv = CVProfile.objects.filter(user=user).first()
+        if cv and (not cv.skills or not isinstance(cv.skills, list) or len(cv.skills) == 0) and getattr(cv, "full_text", ""):
+            reparsed = parse_cv(cv.full_text)
+            analysis = analyze_resume_text(cv.full_text, reparsed.get("skills", []))
+            recovered_skills = []
+            for source in (
+                reparsed.get("skills", []),
+                analysis.get("extractedSkills", []),
+                analysis.get("technicalTerms", []),
+                analysis.get("industryTerms", []),
+            ):
+                if isinstance(source, list):
+                    recovered_skills.extend(source)
+
+            recovered_skills = list(dict.fromkeys([
+                str(skill).strip().lower()
+                for skill in recovered_skills
+                if str(skill).strip()
+            ]))
+
+            if recovered_skills:
+                cv.skills = recovered_skills
+                cv.save(update_fields=["skills"])
+
         has_cv_skills = bool(cv and isinstance(cv.skills, list) and len(cv.skills) > 0)
         school_student = is_school_student(profile.education_level)
         profile_has_skills = bool(profile.skills and isinstance(profile.skills, list) and len(profile.skills) > 0)
@@ -296,6 +334,29 @@ def chatbot_api(request):
         })
 
     cv = CVProfile.objects.filter(user=user).first()
+    if cv and (not cv.skills or not isinstance(cv.skills, list) or len(cv.skills) == 0) and getattr(cv, "full_text", ""):
+        reparsed = parse_cv(cv.full_text)
+        analysis = analyze_resume_text(cv.full_text, reparsed.get("skills", []))
+        recovered_skills = []
+        for source in (
+            reparsed.get("skills", []),
+            analysis.get("extractedSkills", []),
+            analysis.get("technicalTerms", []),
+            analysis.get("industryTerms", []),
+        ):
+            if isinstance(source, list):
+                recovered_skills.extend(source)
+
+        recovered_skills = list(dict.fromkeys([
+            str(skill).strip().lower()
+            for skill in recovered_skills
+            if str(skill).strip()
+        ]))
+
+        if recovered_skills:
+            cv.skills = recovered_skills
+            cv.save(update_fields=["skills"])
+
     has_cv_skills = bool(cv and isinstance(cv.skills, list) and len(cv.skills) > 0)
     school_student = is_school_student(profile.education_level)
     

@@ -153,7 +153,7 @@ def register(request):
     password = request.data.get("password") or ""
     confirm_password = request.data.get("confirmPassword") or request.data.get("confirm_password") or ""
     name = (request.data.get("name") or username).strip()
-    education_level = (request.data.get("educationLevel") or "Class 12").strip()
+    education_level = (request.data.get("educationLevel") or "").strip()
     logger.info("Registration requested for email=%s", email or "<empty>")
 
     if not email or not password or not confirm_password:
