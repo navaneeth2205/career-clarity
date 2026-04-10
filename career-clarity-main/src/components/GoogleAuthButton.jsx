@@ -21,9 +21,9 @@ function waitForGoogleIdentity(timeoutMs = 8000) {
 	return new Promise((resolve, reject) => {
 		const startedAt = Date.now();
 		const timer = window.setInterval(() => {
-			if (window.google?.accounts?.id) {
+			if (window.google?.accounts?.oauth2) {
 				window.clearInterval(timer);
-				resolve(window.google.accounts.id);
+				resolve(window.google.accounts.oauth2);
 				return;
 			}
 			if (Date.now() - startedAt > timeoutMs) {
@@ -38,6 +38,13 @@ function GoogleAuthButton({ onCredential, onError, mode = "signin" }) {
 	const tokenClientRef = useRef(null);
 	const clientIdRef = useRef((import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim());
 	const initializedRef = useRef(false);
+	const onCredentialRef = useRef(onCredential);
+	const onErrorRef = useRef(onError);
+
+	useEffect(() => {
+		onCredentialRef.current = onCredential;
+		onErrorRef.current = onError;
+	}, [onCredential, onError]);
 
 	useEffect(() => {
 		let isDisposed = false;
@@ -51,7 +58,7 @@ function GoogleAuthButton({ onCredential, onError, mode = "signin" }) {
 				}
 
 				if (!clientIdRef.current) {
-					onError?.("Google Sign-In is not configured on server.");
+					onErrorRef.current?.("Google Sign-In is not configured on server.");
 					return;
 				}
 
@@ -65,25 +72,25 @@ function GoogleAuthButton({ onCredential, onError, mode = "signin" }) {
 					prompt: "consent",
 					error_callback: (error) => {
 						const reason = error?.message || error?.type || "Unknown Google OAuth error";
-						onError?.(`Google authorization failed: ${reason}`);
+						onErrorRef.current?.(`Google authorization failed: ${reason}`);
 					},
 					callback: (response) => {
 						if (response?.error) {
 							const reason = response.error_description || response.error || "Google authorization failed.";
-							onError?.(`Google authorization failed: ${reason}`);
+							onErrorRef.current?.(`Google authorization failed: ${reason}`);
 							return;
 						}
 						if (!response?.access_token) {
-							onError?.("Google authentication failed. Please try again.");
+							onErrorRef.current?.("Google authentication failed. Please try again.");
 							return;
 						}
-						onCredential?.({ accessToken: response.access_token });
+						onCredentialRef.current?.({ accessToken: response.access_token });
 					},
 				});
 
 				initializedRef.current = true;
 			} catch {
-				onError?.("Unable to load Google Sign-In right now. Please retry.");
+				onErrorRef.current?.("Unable to load Google Sign-In right now. Please retry.");
 			}
 		};
 
@@ -92,11 +99,11 @@ function GoogleAuthButton({ onCredential, onError, mode = "signin" }) {
 		return () => {
 			isDisposed = true;
 		};
-	}, [mode, onCredential, onError]);
+	}, [mode]);
 
 	const handleClick = () => {
 		if (!initializedRef.current || !tokenClientRef.current) {
-			onError?.("Google Sign-In is still loading. Please try again.");
+			onErrorRef.current?.("Google Sign-In is still loading. Please wait 2-3 seconds and try again.");
 			return;
 		}
 
@@ -104,7 +111,7 @@ function GoogleAuthButton({ onCredential, onError, mode = "signin" }) {
 			tokenClientRef.current.requestAccessToken({ prompt: "consent" });
 		} catch (error) {
 			const reason = error?.message || "Check authorized JavaScript origin and retry.";
-			onError?.(`Could not start Google Sign-In: ${reason}`);
+			onErrorRef.current?.(`Could not start Google Sign-In: ${reason}`);
 		}
 	};
 
