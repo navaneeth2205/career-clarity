@@ -436,8 +436,30 @@ def chatbot_api(request):
         if has_cv_skills or profile_has_skills:
             final_skills = cv.skills if has_cv_skills else (profile.skills or [])
             skills_text = ", ".join(final_skills)
+            
+            if "upload" in message.lower() or "cv" in message.lower() or "quick test" in message.lower():
+                return with_profile_action(
+                    f"Great {profile.full_name or 'Student'}! Your skills are: {skills_text}. Next step is to take the quick test.",
+                    [{"label": "Take Quick Test", "route": "/quick-test"}],
+                )
+            
+            from cv_module.chatbot_utils import build_prompt, format_short_reply, call_ai, resolve_followup_message
+            conversation_history = request.data.get("history") or []
+            flow_context = request.data.get("flowContext") or {}
+            
+            resolved_message = resolve_followup_message(message, conversation_history)
+            prompt = build_prompt(user, resolved_message, conversation_history, flow_context)
+            ai_reply = call_ai(prompt)
+            
+            if ai_reply:
+                formatted_reply = format_short_reply(ai_reply)
+                return with_profile_action(
+                    formatted_reply,
+                    [{"label": "Take Quick Test", "route": "/quick-test"}],
+                )
+            
             return with_profile_action(
-                f"Great {profile.full_name or 'Student'}! Your skills are: {skills_text}. Next step is to take the quick test.",
+                f"Great {profile.full_name or 'Student'}! Your skills are ready: {skills_text}. What would you like to know about careers, learning, or your next steps?",
                 [{"label": "Take Quick Test", "route": "/quick-test"}],
             )
 
