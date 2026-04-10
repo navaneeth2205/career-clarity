@@ -21,9 +21,9 @@ function waitForGoogleIdentity(timeoutMs = 8000) {
 	return new Promise((resolve, reject) => {
 		const startedAt = Date.now();
 		const timer = window.setInterval(() => {
-			if (window.google?.accounts?.oauth2) {
+			if (window.google?.accounts?.id) {
 				window.clearInterval(timer);
-				resolve(window.google.accounts.oauth2);
+				resolve(window.google.accounts.id);
 				return;
 			}
 			if (Date.now() - startedAt > timeoutMs) {
@@ -35,11 +35,11 @@ function waitForGoogleIdentity(timeoutMs = 8000) {
 }
 
 function GoogleAuthButton({ onCredential, onError, mode = "signin" }) {
-	const tokenClientRef = useRef(null);
 	const clientIdRef = useRef((import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim());
 	const initializedRef = useRef(false);
 	const onCredentialRef = useRef(onCredential);
 	const onErrorRef = useRef(onError);
+	const buttonContainerRef = useRef(null);
 
 	useEffect(() => {
 		onCredentialRef.current = onCredential;
@@ -66,31 +66,34 @@ function GoogleAuthButton({ onCredential, onError, mode = "signin" }) {
 				const googleIdentity = await waitForGoogleIdentity();
 				if (isDisposed) return;
 
-				tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+				googleIdentity.initialize({
 					client_id: clientIdRef.current,
-					scope: "openid email profile",
-					prompt: "consent",
-					error_callback: (error) => {
-						const reason = error?.message || error?.type || "Unknown Google OAuth error";
-						onErrorRef.current?.(`Google authorization failed: ${reason}`);
-					},
 					callback: (response) => {
-						if (response?.error) {
-							const reason = response.error_description || response.error || "Google authorization failed.";
-							onErrorRef.current?.(`Google authorization failed: ${reason}`);
-							return;
-						}
-						if (!response?.access_token) {
+						if (!response?.credential) {
 							onErrorRef.current?.("Google authentication failed. Please try again.");
 							return;
 						}
-						onCredentialRef.current?.({ accessToken: response.access_token });
+						onCredentialRef.current?.({ credential: response.credential });
 					},
 				});
 
+				if (buttonContainerRef.current) {
+					buttonContainerRef.current.innerHTML = "";
+					googleIdentity.renderButton(buttonContainerRef.current, {
+						type: "standard",
+						theme: "outline",
+						size: "large",
+						text: mode === "signup" ? "signup_with" : "signin_with",
+						shape: "rectangular",
+						logo_alignment: "left",
+						width: 320,
+					});
+				}
+
 				initializedRef.current = true;
-			} catch {
-				onErrorRef.current?.("Unable to load Google Sign-In right now. Please retry.");
+			} catch (error) {
+				const reason = error?.message || "Unknown error";
+				onErrorRef.current?.(`Unable to load Google Sign-In right now: ${reason}`);
 			}
 		};
 
@@ -101,34 +104,11 @@ function GoogleAuthButton({ onCredential, onError, mode = "signin" }) {
 		};
 	}, [mode]);
 
-	const handleClick = () => {
-		if (!initializedRef.current || !tokenClientRef.current) {
-			onErrorRef.current?.("Google Sign-In is still loading. Please wait 2-3 seconds and try again.");
-			return;
-		}
-
-		try {
-			tokenClientRef.current.requestAccessToken({ prompt: "consent" });
-		} catch (error) {
-			const reason = error?.message || "Check authorized JavaScript origin and retry.";
-			onErrorRef.current?.(`Could not start Google Sign-In: ${reason}`);
-		}
-	};
-
 	return (
-		<button
-			type="button"
-			onClick={handleClick}
-			className="w-full flex items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-400"
-		>
-			<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-				<path fill="#EA4335" d="M9 7.2v3.6h5.07c-.22 1.16-.88 2.14-1.88 2.8l3.04 2.36C17 14.3 18 11.88 18 9.1c0-.64-.06-1.25-.17-1.85H9z"/>
-				<path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.17l-3.04-2.36c-.84.57-1.92.91-2.92.91-2.25 0-4.16-1.52-4.84-3.57H1.01v2.24A9 9 0 009 18z"/>
-				<path fill="#4A90E2" d="M4.16 10.81a5.4 5.4 0 010-3.62V4.95H1A9 9 0 000 9c0 1.45.35 2.82.97 4.05l3.19-2.24z"/>
-				<path fill="#FBBC05" d="M9 3.58c1.32 0 2.5.45 3.43 1.34l2.57-2.57C13.46.9 11.42 0 9 0A9 9 0 001 4.95l3.16 2.24C4.84 5.1 6.75 3.58 9 3.58z"/>
-			</svg>
-			<span>{mode === "signup" ? "Sign up with Google" : "Sign in with Google"}</span>
-		</button>
+		<div className="w-full flex flex-col items-center gap-2">
+			<div ref={buttonContainerRef} className="w-full flex justify-center" />
+			{!initializedRef.current ? <p className="text-xs text-slate-500">Loading Google Sign-In…</p> : null}
+		</div>
 	);
 }
 
