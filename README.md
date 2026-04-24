@@ -116,6 +116,16 @@ career-clarity/
 - Add richer screenshots and product walkthroughs
 - Introduce automated testing for frontend and backend flows
 
+## Team Contributions
+
+This project was developed as a group effort. Key contributions are summarized below:
+
+- Vivek Verma: Frontend development and UI/UX support
+- Ashok Reddy: Frontend development ,deployment
+- Harsha Srinivas: Documentation and project support
+- Satish Sahu: Documentation and UI/UX support
+- B. Navaneeth: Backend development and deployemnt
+
 ## Contributing
 
 Contributions are welcome. If you would like to improve the project:
@@ -129,4 +139,7 @@ Please keep contributions focused, well-documented, and consistent with the exis
 
 ## License
 
-This project does not currently include an open-source license. Add a license file before redistributing or open-sourcing the code.
+This project is licensed under the [MIT License](LICENSE).
+
+You are free to use, modify, and distribute this project in accordance with the terms of the license.
+
