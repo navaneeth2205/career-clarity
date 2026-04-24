@@ -17,14 +17,22 @@ Explore the deployed application here:
 
 ## Screenshots / UI Preview
 
-All UI images and screenshots will be stored inside the root-level `/components` folder, outside `src`.
+All UI images and screenshots are stored inside the root-level `/screenshots` folder, outside `src`.
+
+### Preview Images
+
+![Home Screen](screenshots/home.png)
+
+![Resume Screen](screenshots/Resume.png)
+
+![Working Screen](screenshots/Working.png)
 
 Use the following Markdown syntax to display images from that folder:
 
 ```md
-![Homepage](components/homepage.png)
-![Dashboard](components/dashboard.png)
-![Mobile View](components/mobile-view.png)
+![Home Screen](screenshots/home.png)
+![Resume Screen](screenshots/Resume.png)
+![Working Screen](screenshots/Working.png)
 ```
 
 ## Features
